@@ -1,0 +1,74 @@
+name: OpTrack — Opportunity Hunter
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'   # Weekly deep scan Monday 4am UTC (runs BEFORE daily)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Scan mode'
+        required: false
+        default: 'auto'
+        type: choice
+        options: [auto, daily, weekly]
+      dry_run:
+        description: 'Dry run (no Notion write)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine run flags
+        id: flags
+        run: |
+          MODE="${{ github.event.inputs.mode || 'auto' }}"
+          DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+          FLAGS=""
+          if [ "$MODE" = "daily" ]; then FLAGS="--daily"; fi
+          if [ "$MODE" = "weekly" ]; then FLAGS="--weekly"; fi
+          if [ "$DRY_RUN" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
+          echo "flags=$FLAGS" >> $GITHUB_OUTPUT
+
+      - name: Run OpTrack
+        env:
+          SERPER_API_KEY:    ${{ secrets.SERPER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTION_TOKEN:      ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID:      ${{ secrets.NOTION_DB_ID }}
+        run: python main.py ${{ steps.flags.outputs.flags }}
+
+      - name: Commit updated state
+        run: |
+          git config user.name "optrack-bot"
+          git config user.email "optrack-bot@noreply.github.com"
+          git add data/seen_urls.json logs/run_log.json
+          git diff --staged --quiet || (
+            git commit -m "run: $(date -u +%Y-%m-%d) — opportunity scan"
+            git pull origin main --rebase
+            git push
+          )

@@ -1,0 +1,95 @@
+# OpTrack v2 — Opportunity Hunter
+# These keywords generate real Google search queries via Serper.dev.
+# They are NOT filters — they are the search engine inputs.
+
+opportunity_types:
+  - "clinical innovation fellowship"
+  - "health innovation fellowship"
+  - "digital health fellowship"
+  - "clinical AI fellowship"
+  - "fellowship apply now"
+  - "leadership program apply"
+  - "health leadership fellowship"
+  - "accelerator program apply"
+  - "healthtech accelerator"
+  - "clinical AI accelerator"
+  - "digital health accelerator"
+  - "health incubator program"
+  - "venture studio health"
+  - "innovation lab open call"
+  - "sandbox pilot program"
+  - "health grant open call"
+  - "microgrant healthtech"
+  - "pitch competition health"
+  - "founder roundtable health"
+  - "hospital innovation program"
+  - "health hackathon"
+  - "scholarship health"
+  - "open call healthtech"
+  - "procurement innovation health"
+  - "fellowship"
+
+regions:
+  - "Dubai"
+  - "UAE"
+  - "DHA"
+  - "DIFC"
+  - "Chicago"
+  - "Midwest"
+  - "Madison Wisconsin"
+  - "MENA"
+  - "Global"
+
+# High-priority combos — always included in the daily light scan
+priority_combos:
+  - ["clinical innovation fellowship", "Dubai"]
+  - ["clinical innovation fellowship", "Chicago"]
+  - ["health innovation fellowship", "UAE"]
+  - ["digital health fellowship", "Global"]
+  - ["healthtech accelerator", "Dubai"]
+  - ["healthtech accelerator", "Chicago"]
+  - ["clinical AI accelerator", "Global"]
+  - ["health grant open call", "Dubai"]
+  - ["health grant open call", "Midwest"]
+  - ["hospital innovation program", "Chicago"]
+  - ["leadership program apply", "Dubai"]
+  - ["health leadership fellowship", "Global"]
+  - ["innovation lab open call", "UAE"]
+  - ["digital health accelerator", "MENA"]
+
+# Claude AI evaluation criteria
+# These guide the AI prompt — edit to tighten or loosen what gets saved
+scoring:
+  topics_of_interest:
+    - "clinical AI"
+    - "digital health"
+    - "healthtech"
+    - "medtech"
+    - "health data"
+    - "hospital innovation"
+    - "health policy"
+    - "regulatory science"
+    - "translational research"
+
+  regions_of_interest:
+    - "Dubai"
+    - "UAE"
+    - "Chicago"
+    - "Midwest"
+    - "Madison"
+    - "Wisconsin"
+    - "MENA"
+    - "Global"
+    - "United States"
+
+  junk_signals:
+    - "job posting"
+    - "hiring"
+    - "we are hiring"
+    - "job opening"
+    - "postdoc position"
+    - "PhD position"
+    - "patient recruitment"
+    - "clinical trial enrollment"
+    - "expo booth"
+    - "sponsorship package"

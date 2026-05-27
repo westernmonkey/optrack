@@ -1,0 +1,11 @@
+[
+  {
+    "date": "2026-05-27",
+    "mode": "daily",
+    "raw": 60,
+    "new": 60,
+    "prefiltered": 41,
+    "accepted": 19,
+    "written": 19
+  }
+]
