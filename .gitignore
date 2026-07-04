@@ -40,3 +40,4 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+.env.example

@@ -27,6 +27,7 @@ def batch_write(items):
                 "Deadline": {"rich_text": [{"text": {"content": str(item.get("deadline") or "")[:200]}}]},
                 "Source":   {"rich_text": [{"text": {"content": str(item.get("source_query", ""))[:200]}}]},
                 "Score":    {"number": int(item.get("score", 0))},
+                "Track":    {"select": {"name": str(item.get("track", "general"))[:100]}},
                 "Found On": {"date": {"start": str(date.today())}},
                 "Status":   {"select": {"name": "New"}}
             }

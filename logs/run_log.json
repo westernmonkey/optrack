@@ -7,5 +7,95 @@
     "prefiltered": 41,
     "accepted": 19,
     "written": 19
+  },
+  {
+    "date": "2026-05-27",
+    "mode": "daily",
+    "raw": 58,
+    "new": 10,
+    "prefiltered": 7,
+    "accepted": 4,
+    "written": 4
+  },
+  {
+    "date": "2026-06-01",
+    "mode": "weekly",
+    "raw": 275,
+    "new": 267,
+    "prefiltered": 50,
+    "accepted": 20,
+    "written": 20
+  },
+  {
+    "date": "2026-06-05",
+    "mode": "daily",
+    "raw": 80,
+    "new": 39,
+    "prefiltered": 6,
+    "accepted": 4,
+    "written": 4
+  },
+  {
+    "date": "2026-06-07",
+    "mode": "daily",
+    "raw": 81,
+    "new": 12,
+    "prefiltered": 2,
+    "accepted": 0,
+    "written": 0
+  },
+  {
+    "date": "2026-06-09",
+    "mode": "daily",
+    "raw": 204,
+    "new": 120,
+    "prefiltered": 42,
+    "accepted": 17,
+    "written": 17
+  },
+  {
+    "date": "2026-06-11",
+    "mode": "daily",
+    "raw": 201,
+    "new": 51,
+    "prefiltered": 17,
+    "accepted": 8,
+    "written": 8
+  },
+  {
+    "date": "2026-06-13",
+    "mode": "daily",
+    "raw": 201,
+    "new": 24,
+    "prefiltered": 8,
+    "accepted": 0,
+    "written": 0
+  },
+  {
+    "date": "2026-06-17",
+    "mode": "daily",
+    "raw": 195,
+    "new": 20,
+    "prefiltered": 2,
+    "accepted": 1,
+    "written": 1
+  },
+  {
+    "date": "2026-06-20",
+    "mode": "daily",
+    "raw": 206,
+    "new": 22,
+    "prefiltered": 7,
+    "accepted": 3,
+    "written": 3
+  },
+  {
+    "date": "2026-07-04",
+    "mode": "daily",
+    "raw": 205,
+    "new": 39,
+    "prefiltered": 11,
+    "accepted": 0,
+    "written": 0
   }
 ]

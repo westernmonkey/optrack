@@ -7,7 +7,10 @@ No API calls — pure Python. Runs in milliseconds.
 Goal: reduce 200 raw results down to ~30-50 worth evaluating.
 """
 
+from pathlib import Path
 from urllib.parse import urlparse
+
+import yaml
 
 # Domains that will never contain registerable opportunities
 JUNK_DOMAINS = {
@@ -58,26 +61,57 @@ JUNK_TEXT_SIGNALS = [
     "patient recruitment", "clinical trial enrollment", "enroll in our study",
 ]
 
+# Junk text signals that apply to the labs track. Research/lab pages often
+# legitimately use hiring language for RA / student roles, so we relax the
+# job-posting kills and only hard-kill clearly irrelevant items.
+JUNK_TEXT_SIGNALS_LABS = [
+    "instagram post", "facebook post", "view on instagram",
+    "watch video", "subscribe to", "follow us on",
+    "press release", "for immediate release",
+    "tenure-track faculty", "full professor", "assistant professor",
+    "patient recruitment", "clinical trial enrollment", "enroll in our study",
+]
+
+# Labs-track signals — research / student opportunity language.
+LABS_OPPORTUNITY_SIGNALS = [
+    "research assistant", "undergraduate research", "student researcher",
+    "research internship", "summer research", "research opportunit",
+    "join the lab", "join our lab", "research fellowship", "fellowship",
+    "internship", "apply", "application", "positions", "opening",
+    "program", "research program", "lab", "research experience",
+    "reu", "traineeship", "scholar",
+]
+
 # Title/snippet must contain at least one of these to pass
 # (unless URL is from a known-good domain)
 OPPORTUNITY_SIGNALS = [
     "apply", "application", "applications open", "apply now",
     "register", "registration", "enroll", "enrollment",
-    "deadline", "cohort", "fellowship", "accelerator",
+    "deadline", "cohort", "fellowship",
     "grant", "scholarship", "open call", "nominations",
     "program", "incubator", "hackathon", "competition",
     "leadership program", "innovation program", "pitch",
+    "event", "conference", "summit", "forum", "symposium",
+    "tickets", "attend", "rsvp", "free admission",
+    "networking", "meetup", "demo day",
+    "accelerator", "call for", "accepting applications", "now open",
 ]
 
+
+def _load_domains(key: str) -> set[str]:
+    config_path = Path(__file__).resolve().parent.parent / "config" / "keywords.yaml"
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    return {domain.lower().lstrip("www.") for domain in config.get(key, [])}
+
+
+def load_trusted_domains() -> set[str]:
+    return _load_domains("trusted_domains")
+
+
 # Domains that are almost always legit opportunity sources — skip signal check
-TRUSTED_DOMAINS = {
-    "opportunitydesk.org", "devpost.com", "f6s.com",
-    "ashoka.org", "atlanticfellows.org", "rhodeshouse.ox.ac.uk",
-    "matter.health", "startuphealth.com", "rockhealth.com",
-    "ycombinator.com", "plugandplaytechcenter.com",
-    "dubaifuture.ae", "dha.gov.ae", "in5.ae",
-    "wamda.com", "magnitt.com", "1871.com",
-}
+TRUSTED_DOMAINS = load_trusted_domains()
+LABS_TRUSTED_DOMAINS = _load_domains("labs_trusted_domains")
 
 
 def get_domain(url: str) -> str:
@@ -87,9 +121,19 @@ def get_domain(url: str) -> str:
         return ""
 
 
+def _item_track(item: dict) -> str:
+    """Prefer labs if the item was surfaced by the labs track at all."""
+    tracks = item.get("tracks")
+    if tracks:
+        return "labs" if "labs" in tracks else tracks[0]
+    return item.get("track", "general")
+
+
 def is_junk(item: dict) -> tuple[bool, str]:
     """
     Returns (True, reason) if item should be dropped, (False, '') if it passes.
+    Applies track-specific rules: the labs track allows research/RA language
+    and trusts academic (.edu) domains that the general track would reject.
     """
     url = item.get("url", "")
     title = (item.get("title") or "").lower()
@@ -98,18 +142,25 @@ def is_junk(item: dict) -> tuple[bool, str]:
 
     domain = get_domain(url)
     path = urlparse(url).path.lower() if url else ""
+    track = _item_track(item)
 
-    # 1. Hard kill — junk domain
+    # 1. Hard kill — junk domain (social / news / job boards)
     if domain in JUNK_DOMAINS:
         return True, f"junk domain: {domain}"
 
     # 2. Hard kill — junk path pattern
+    #    Labs pages often live under /jobs/ or /careers/ for RA roles, so
+    #    skip those particular fragments for the labs track.
+    labs_ok_fragments = {"/jobs/", "/careers/", "/job-board/"}
     for frag in JUNK_PATH_FRAGMENTS:
+        if track == "labs" and frag in labs_ok_fragments:
+            continue
         if frag in path:
             return True, f"junk URL path: {frag}"
 
-    # 3. Hard kill — junk text signal in title/snippet
-    for signal in JUNK_TEXT_SIGNALS:
+    # 3. Hard kill — junk text signal (track-specific list)
+    junk_signals = JUNK_TEXT_SIGNALS_LABS if track == "labs" else JUNK_TEXT_SIGNALS
+    for signal in junk_signals:
         if signal in combined_text:
             return True, f"junk text signal: '{signal}'"
 
@@ -117,8 +168,16 @@ def is_junk(item: dict) -> tuple[bool, str]:
     if domain in TRUSTED_DOMAINS:
         return False, ""
 
+    if track == "labs":
+        # Trust academic domains and known lab hosts outright.
+        if domain in LABS_TRUSTED_DOMAINS or domain.endswith(".edu"):
+            return False, ""
+        signals = LABS_OPPORTUNITY_SIGNALS
+    else:
+        signals = OPPORTUNITY_SIGNALS
+
     # 5. Must contain at least one opportunity signal
-    if not any(sig in combined_text for sig in OPPORTUNITY_SIGNALS):
+    if not any(sig in combined_text for sig in signals):
         return True, "no opportunity signal in title/snippet"
 
     return False, ""

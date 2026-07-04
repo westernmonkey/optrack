@@ -30,11 +30,11 @@ def get_client() -> anthropic.Anthropic:
 
 SYSTEM_PROMPT = """You are an opportunity evaluator for a researcher in clinical AI and digital health based in Dubai and Chicago.
 
-Your job: read a webpage and decide if it describes a real program that a person can apply or register for — such as a fellowship, accelerator, grant, scholarship, leadership program, incubator, hackathon, pitch competition, or similar. 
+Your job: read a webpage and decide if it describes a real program that a person can apply or register for — such as a fellowship, grant, scholarship, leadership program, incubator, hackathon, pitch competition, or similar. 
 
 The user's interests:
 - Topics: clinical AI, digital health, healthtech, medtech, hospital innovation, health data, regulatory science
-- Regions: Dubai, UAE, Chicago, Midwest US, MENA, Global
+- Regions: Dubai, UAE, Chicago, Midwest, US, Global
 
 Respond ONLY with a JSON object. No preamble, no markdown fences.
 
@@ -42,9 +42,9 @@ If it IS a real registerable opportunity:
 {
   "is_opportunity": true,
   "name": "Program name",
-  "type": "Fellowship|Accelerator|Grant|Scholarship|Hackathon|Leadership Program|Incubator|Competition|Other",
+  "type": "Fellowship|Grant|Scholarship|Hackathon|Leadership Program|Incubator|Competition|Other",
   "deadline": "YYYY-MM-DD or null if not found",
-  "region": "Dubai|UAE|Chicago|Midwest|MENA|Global|Other",
+  "region": "Dubai|UAE|Chicago|Midwest|Global|Other",
   "eligibility": "Short description of who can apply (max 150 chars)",
   "description": "What the program is (max 200 chars)",
   "ai_summary": "Why this is or isn't interesting for a clinical AI researcher in Dubai/Chicago (max 200 chars)",
@@ -58,12 +58,54 @@ If it is NOT a real registerable opportunity (news article, job posting, general
 }"""
 
 
+LABS_SYSTEM_PROMPT = """You are an opportunity evaluator for an undergraduate aiming to work in clinical AI and digital health research labs (clinical workflow, clinical decision support, RCM, intake, and documentation AI).
+
+Your job: read a webpage from or about a research lab / academic center / research program and decide if it offers a real opportunity a student or early-career person can join or apply for — such as an undergraduate research position, research assistant role, student researcher / research internship, summer research program (REU-style), or a research fellowship.
+
+ACCEPT: undergraduate research, research assistant (RA) roles, student researcher positions, lab internships, summer research programs, research fellowships, and structured student programs tied to a lab or center.
+REJECT: tenure-track / faculty hiring, PhD or postdoc-only positions, generic staff jobs, pure news/press coverage, publications with no way to get involved, and pages that only describe research with no opportunity to join.
+
+The user's interests:
+- Topics: clinical AI, health informatics, digital health, clinical decision support, clinical workflow, documentation/ambient AI
+- Location is flexible (US labs are the focus); remote/summer is fine.
+
+Respond ONLY with a JSON object. No preamble, no markdown fences.
+
+If it IS a real opportunity to join:
+{
+  "is_opportunity": true,
+  "name": "Lab / program / position name",
+  "type": "Research Internship|Research Assistant|Student Research|Research Fellowship|Lab Program|Other",
+  "deadline": "YYYY-MM-DD or null if not found",
+  "region": "City or institution",
+  "eligibility": "Who can apply, esp. undergrad eligibility (max 150 chars)",
+  "description": "What the lab/program is and what you'd do (max 200 chars)",
+  "ai_summary": "Why this is a good clinical AI research path for an undergrad (max 200 chars)",
+  "score": <integer 1-10, where 10 = clinical AI/CDS lab explicitly open to undergrads>
+}
+
+If it is NOT a real opportunity to join (faculty hiring, PhD/postdoc only, news, publication, general info):
+{
+  "is_opportunity": false,
+  "reason": "Brief reason"
+}"""
+
+
+def _system_prompt_for(item: dict) -> str:
+    tracks = item.get("tracks")
+    track = ("labs" if tracks and "labs" in tracks else
+             (tracks[0] if tracks else item.get("track", "general")))
+    return LABS_SYSTEM_PROMPT if track == "labs" else SYSTEM_PROMPT
+
+
 def build_user_prompt(item: dict) -> str:
     title = item.get("scraped_title") or item.get("title", "")
     body = item.get("scraped_body") or item.get("snippet", "")
     url = item.get("url", "")
     query = item.get("source_query", "")
-    return f"""URL: {url}
+    track = item.get("track", "general")
+    return f"""Track: {track}
+URL: {url}
 Search query that found this: {query}
 Page title: {title}
 Page content:
@@ -95,13 +137,14 @@ def evaluate(item: dict, retries: int = 1) -> dict | None:
 
     client = get_client()
     prompt = build_user_prompt(item)
+    system_prompt = _system_prompt_for(item)
 
     for attempt in range(retries + 1):
         try:
             response = client.messages.create(
                 model="claude-haiku-4-5",
                 max_tokens=400,
-                system=SYSTEM_PROMPT,
+                system=system_prompt,
                 messages=[{"role": "user", "content": prompt}],
             )
             text = response.content[0].text

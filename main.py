@@ -1,6 +1,6 @@
 """
 main.py — OpTrack v2
-Opportunity hunter: searches the web for real fellowship/accelerator/grant
+Opportunity hunter: searches the web for real fellowship/grant
 programs and saves them to Notion.
 
 Usage:
@@ -70,12 +70,15 @@ def main():
     print(f"OpTrack v2 — {mode.upper()} scan — {date.today()}")
     print(f"{'='*60}\n")
 
-    # ── Step 1: Build search queries ──────────────────────────────
+    # ── Step 1: Build search queries (general + labs tracks) ──────
     queries = build_queries(mode=mode)
-    print(f"[QUERIES] Built {len(queries)} search queries ({mode} mode)\n")
+    n_general = sum(1 for q in queries if q.get("track") == "general")
+    n_labs = sum(1 for q in queries if q.get("track") == "labs")
+    print(f"[QUERIES] Built {len(queries)} search queries "
+          f"({n_general} general, {n_labs} labs) ({mode} mode)\n")
 
     # ── Step 2: Search the web ────────────────────────────────────
-    raw_results = batch_search(queries, num_results=3)
+    raw_results = batch_search(queries, num_results=10)
     print(f"\n[SEARCH] {len(raw_results)} unique URLs found\n")
 
     if not raw_results:
@@ -113,6 +116,19 @@ def main():
     accepted = batch_evaluate(scraped, min_score=args.min_score)
     print(f"\n[EVAL] {len(accepted)} opportunities accepted\n")
 
+    # Normalize the track label for output: prefer 'labs' on cross-track URLs.
+    for item in accepted:
+        tracks = item.get("tracks")
+        if tracks:
+            item["track"] = "labs" if "labs" in tracks else tracks[0]
+
+    accepted_by_track = {
+        "general": sum(1 for it in accepted if it.get("track") == "general"),
+        "labs":    sum(1 for it in accepted if it.get("track") == "labs"),
+    }
+    print(f"[EVAL] By track — general: {accepted_by_track['general']}, "
+          f"labs: {accepted_by_track['labs']}\n")
+
     # ── Step 7: Write to Notion ───────────────────────────────────
     written = 0
     if accepted and not args.dry_run:
@@ -120,7 +136,8 @@ def main():
     elif args.dry_run:
         print("[DRY RUN] Skipping Notion write. Accepted items:")
         for item in accepted:
-            print(f"  [{item['score']}/10] {item['name']} — {item.get('deadline','no deadline')} — {item.get('url','')[:60]}")
+            print(f"  [{item['score']}/10] ({item.get('track','general')}) {item['name']} "
+                  f"— {item.get('deadline','no deadline')} — {item.get('url','')[:60]}")
 
     # ── Step 8: Mark all new URLs as seen (including rejected) ────
     mark_seen(new_results)
@@ -134,6 +151,7 @@ def main():
         "prefiltered": len(candidates),
         "accepted":    len(accepted),
         "written":     written,
+        "by_track":    accepted_by_track,
     }
     save_log(log)
 
