@@ -1,93 +1,156 @@
 """
 evaluator.py
-Sends each scraped page to Claude (claude-haiku-3-5) for evaluation.
-Claude decides:
-  - Is this a real program someone can apply/register for?
-  - What are the key details (deadline, eligibility, type, region)?
-  - Score 1-10 for relevance to the user's interests.
-
-Cost: ~$0.02 per daily run, ~$0.06 per weekly run.
+Sends each scraped page to a local Ollama model for evaluation.
 """
 
 import json
 import os
 import time
 
-import anthropic
+import requests
 
-CLIENT = None
-
-
-def get_client() -> anthropic.Anthropic:
-    global CLIENT
-    if CLIENT is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            raise EnvironmentError("ANTHROPIC_API_KEY not set. Check your .env file.")
-        CLIENT = anthropic.Anthropic(api_key=api_key)
-    return CLIENT
+DEFAULT_OLLAMA_BASE = "http://localhost:11434"
+DEFAULT_OLLAMA_MODEL = "llama3.2"
 
 
-SYSTEM_PROMPT = """You are an opportunity evaluator for a researcher in clinical AI and digital health based in Dubai and Chicago.
+def _ollama_base() -> str:
+    return os.environ.get("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE).rstrip("/")
 
-Your job: read a webpage and decide if it describes a real program that a person can apply or register for — such as a fellowship, grant, scholarship, leadership program, incubator, hackathon, pitch competition, or similar. 
 
-The user's interests:
-- Topics: clinical AI, digital health, healthtech, medtech, hospital innovation, health data, regulatory science
-- Regions: Dubai, UAE, Chicago, Midwest, US, Global
+def _ollama_model() -> str:
+    explicit = os.environ.get("OLLAMA_MODEL", "").strip()
+    if explicit:
+        return explicit
+    # Auto-pick first installed model if OLLAMA_MODEL unset
+    try:
+        r = requests.get(f"{_ollama_base()}/api/tags", timeout=5)
+        r.raise_for_status()
+        models = r.json().get("models", [])
+        if models:
+            return models[0]["name"]
+    except Exception:
+        pass
+    return DEFAULT_OLLAMA_MODEL
 
-Respond ONLY with a JSON object. No preamble, no markdown fences.
 
-If it IS a real registerable opportunity:
+def _check_ollama() -> None:
+    try:
+        r = requests.get(f"{_ollama_base()}/api/tags", timeout=5)
+        r.raise_for_status()
+    except Exception as e:
+        raise EnvironmentError(
+            f"Ollama not reachable at {_ollama_base()}. "
+            f"Start it with: ollama serve — then pull a model: ollama pull llama3.2\n"
+            f"({e})"
+        ) from e
+
+
+def call_llm(system_prompt: str, user_prompt: str) -> str:
+    model = _ollama_model()
+    response = requests.post(
+        f"{_ollama_base()}/api/chat",
+        json={
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": 0.2, "num_predict": 500},
+        },
+        timeout=300,
+    )
+    response.raise_for_status()
+    data = response.json()
+    return data["message"]["content"]
+
+
+SYSTEM_PROMPT = """You are OpTrack's opportunity evaluator for a researcher in clinical AI and digital health (Dubai + Chicago).
+
+TASK: Decide if this webpage is a REAL opportunity someone can register for, apply to, attend (with registration), or join — not just read about.
+
+ACCEPT (be inclusive — when in doubt, accept with a lower score):
+- Fellowships, grants, scholarships, accelerators, incubators, open calls
+- Conferences, summits, forums, symposia WITH registration/tickets/apply/RSVP/call for abstracts/posters
+- Demo days, pitch events, hackathons, innovation challenges, startup competitions
+- Networking events, meetups, mixers, happy hours for healthtech/digital health/clinical AI
+- Leadership programs, emerging innovator programs, student/early-career programs in health
+- Event pages on Eventbrite, Meetup, Luma, university/hospital sites if participation is possible
+- Pages that say "register", "apply", "submit", "nominate", "join", "tickets", "save your spot", "applications open", "cohort", "deadline"
+
+REJECT ONLY when clearly NOT joinable:
+- Pure news/press/blog recap with no application or registration
+- Permanent job postings (full-time staff hire, not a program)
+- Generic directory/listicle with no specific program
+- Completely unrelated topic (crypto, unrelated industry expo with no health angle)
+
+TOPICS OF INTEREST: clinical AI, digital health, healthtech, medtech, hospital innovation, health data, CDS, clinical workflow, ambient/documentation AI
+REGIONS OF INTEREST: Dubai, UAE, Chicago, Midwest, US, Global, Virtual
+
+Respond ONLY with valid JSON. No markdown fences, no extra text.
+
+If ACCEPT:
 {
   "is_opportunity": true,
-  "name": "Program name",
-  "type": "Fellowship|Grant|Scholarship|Hackathon|Leadership Program|Incubator|Competition|Other",
-  "deadline": "YYYY-MM-DD or null if not found",
-  "region": "Dubai|UAE|Chicago|Midwest|Global|Other",
-  "eligibility": "Short description of who can apply (max 150 chars)",
-  "description": "What the program is (max 200 chars)",
-  "ai_summary": "Why this is or isn't interesting for a clinical AI researcher in Dubai/Chicago (max 200 chars)",
-  "score": <integer 1-10, where 10 = perfect match for clinical AI + Dubai/Chicago>
+  "name": "Specific program or event name",
+  "type": "Fellowship|Grant|Scholarship|Conference|Summit|Networking|Hackathon|Accelerator|Incubator|Demo Day|Competition|Leadership Program|Other",
+  "deadline": "YYYY-MM-DD or null",
+  "region": "Dubai|UAE|Chicago|Midwest|Global|Virtual|Other",
+  "eligibility": "Who can participate (max 150 chars)",
+  "description": "What it is and why it matters (max 200 chars)",
+  "ai_summary": "Fit for clinical AI / digital health researcher in Dubai-Chicago (max 200 chars)",
+  "score": <1-10, 10=perfect match>
 }
 
-If it is NOT a real registerable opportunity (news article, job posting, general info page, conference coverage, etc.):
+If REJECT:
 {
   "is_opportunity": false,
-  "reason": "Brief reason"
+  "reason": "One sentence"
 }"""
 
 
-LABS_SYSTEM_PROMPT = """You are an opportunity evaluator for an undergraduate aiming to work in clinical AI and digital health research labs (clinical workflow, clinical decision support, RCM, intake, and documentation AI).
+LABS_SYSTEM_PROMPT = """You are OpTrack's labs-track evaluator for an undergraduate targeting US clinical AI / digital health / health informatics research labs (workflow, CDS, RCM, intake, documentation AI).
 
-Your job: read a webpage from or about a research lab / academic center / research program and decide if it offers a real opportunity a student or early-career person can join or apply for — such as an undergraduate research position, research assistant role, student researcher / research internship, summer research program (REU-style), or a research fellowship.
+TASK: Decide if this page offers a way for a STUDENT or early-career person to join a lab, research group, or structured research program — even if the title uses generic wording.
 
-ACCEPT: undergraduate research, research assistant (RA) roles, student researcher positions, lab internships, summer research programs, research fellowships, and structured student programs tied to a lab or center.
-REJECT: tenure-track / faculty hiring, PhD or postdoc-only positions, generic staff jobs, pure news/press coverage, publications with no way to get involved, and pages that only describe research with no opportunity to join.
+ACCEPT (be inclusive — labs rarely say "research assistant" explicitly):
+- Undergraduate research, URAP, REU, summer research, research internship
+- Generic intern programs at labs/centers: "CERES interns", "summer interns", "student interns", "research interns", "lab interns"
+- Fellowships/traineeships aimed at students or recent grads (not faculty)
+- "Join our lab", "work with us", "research opportunities", "openings", "positions for students"
+- Lab/center pages at .edu hospitals that list student programs, trainee slots, or application instructions
+- NIH/NLM summer programs, DBMI summer research, structured lab rotations with apply link
+- Pages where a named lab (clinical AI, health informatics, biomedical data science) + student/intern/trainee language co-occur
 
-The user's interests:
-- Topics: clinical AI, health informatics, digital health, clinical decision support, clinical workflow, documentation/ambient AI
-- Location is flexible (US labs are the focus); remote/summer is fine.
+REJECT ONLY when clearly NOT a student join path:
+- Tenure-track or faculty hiring only
+- PhD/postdoc-only ads with no undergrad path
+- Pure research description / publication list / PI bio with zero way to apply
+- Unrelated corporate full-time jobs
 
-Respond ONLY with a JSON object. No preamble, no markdown fences.
+TOPICS: clinical AI, health informatics, digital health, CDS, clinical workflow, ambient AI, EHR/RCM automation
+LOCATIONS: US academic medical centers preferred; remote/summer OK
 
-If it IS a real opportunity to join:
+Respond ONLY with valid JSON. No markdown fences, no extra text.
+
+If ACCEPT:
 {
   "is_opportunity": true,
-  "name": "Lab / program / position name",
-  "type": "Research Internship|Research Assistant|Student Research|Research Fellowship|Lab Program|Other",
-  "deadline": "YYYY-MM-DD or null if not found",
+  "name": "Lab, program, or position name",
+  "type": "Research Internship|Research Assistant|Student Research|Summer Program|Research Fellowship|Lab Program|Other",
+  "deadline": "YYYY-MM-DD or null",
   "region": "City or institution",
-  "eligibility": "Who can apply, esp. undergrad eligibility (max 150 chars)",
-  "description": "What the lab/program is and what you'd do (max 200 chars)",
-  "ai_summary": "Why this is a good clinical AI research path for an undergrad (max 200 chars)",
-  "score": <integer 1-10, where 10 = clinical AI/CDS lab explicitly open to undergrads>
+  "eligibility": "Undergrad/student eligibility (max 150 chars)",
+  "description": "Lab focus and what you'd do (max 200 chars)",
+  "ai_summary": "Why good for clinical AI undergrad path (max 200 chars)",
+  "score": <1-10, 10=clinical AI lab explicitly open to undergrads>
 }
 
-If it is NOT a real opportunity to join (faculty hiring, PhD/postdoc only, news, publication, general info):
+If REJECT:
 {
   "is_opportunity": false,
-  "reason": "Brief reason"
+  "reason": "One sentence"
 }"""
 
 
@@ -104,18 +167,20 @@ def build_user_prompt(item: dict) -> str:
     url = item.get("url", "")
     query = item.get("source_query", "")
     track = item.get("track", "general")
-    return f"""Track: {track}
+    return f"""Evaluate this search result for track: {track}
+
 URL: {url}
-Search query that found this: {query}
+Google query that found it: {query}
 Page title: {title}
-Page content:
-{body[:3500]}"""
+
+Page content (may be truncated):
+{body[:3500]}
+
+Extract whether this is a joinable opportunity. Look for implicit signals — e.g. "interns", "fellows", "cohort", "register", "apply", "lab", "research group", "student program" — not only exact phrases like "research assistant"."""
 
 
 def parse_response(text: str) -> dict | None:
-    """Parse Claude's JSON response. Returns None on failure."""
     text = text.strip()
-    # Strip markdown fences if Claude ignored instructions
     if text.startswith("```"):
         parts = text.split("```")
         text = parts[1] if len(parts) > 1 else text
@@ -124,30 +189,25 @@ def parse_response(text: str) -> dict | None:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        return None
+        start, end = text.find("{"), text.rfind("}")
+        if start >= 0 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+    return None
 
 
 def evaluate(item: dict, retries: int = 1) -> dict | None:
-    """
-    Evaluate a single item. Returns enriched item dict or None if rejected/failed.
-    """
-    # Skip if scraper totally failed and we have no body or snippet
     if not item.get("scraped_body") and not item.get("snippet"):
         return None
 
-    client = get_client()
     prompt = build_user_prompt(item)
     system_prompt = _system_prompt_for(item)
 
     for attempt in range(retries + 1):
         try:
-            response = client.messages.create(
-                model="claude-haiku-4-5",
-                max_tokens=400,
-                system=system_prompt,
-                messages=[{"role": "user", "content": prompt}],
-            )
-            text = response.content[0].text
+            text = call_llm(system_prompt, prompt)
             parsed = parse_response(text)
 
             if parsed is None:
@@ -158,7 +218,6 @@ def evaluate(item: dict, retries: int = 1) -> dict | None:
                 print(f"  [EVAL] Rejected: {parsed.get('reason', 'not an opportunity')}")
                 return None
 
-            # Merge evaluation results into item
             item["name"]        = parsed.get("name") or item.get("title", "Unnamed")
             item["type"]        = parsed.get("type", "Other")
             item["deadline"]    = parsed.get("deadline")
@@ -169,10 +228,22 @@ def evaluate(item: dict, retries: int = 1) -> dict | None:
             item["score"]       = int(parsed.get("score", 5))
             return item
 
-        except anthropic.RateLimitError:
-            print("  [EVAL] Rate limit hit — waiting 30s")
-            time.sleep(30)
-            continue
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            body = ""
+            try:
+                body = e.response.text[:200] if e.response is not None else ""
+            except Exception:
+                pass
+            if status == 429:
+                print("  [EVAL] Rate limited — waiting 30s")
+                time.sleep(30)
+                continue
+            print(f"  [EVAL] HTTP {status}: {body}")
+            if attempt < retries:
+                time.sleep(5)
+                continue
+            return None
         except Exception as e:
             print(f"  [EVAL] Error: {e}")
             if attempt < retries:
@@ -183,13 +254,12 @@ def evaluate(item: dict, retries: int = 1) -> dict | None:
     return None
 
 
-def batch_evaluate(items: list[dict], min_score: int = 5, delay: float = 0.3) -> list[dict]:
-    """
-    Evaluate all items with Claude. Filter by min_score.
-    Returns only accepted, high-quality opportunities.
-    """
+def batch_evaluate(items: list[dict], min_score: int = 5, delay: float = 0.5) -> list[dict]:
     accepted = []
     total = len(items)
+    _check_ollama()
+    model = _ollama_model()
+    print(f"[EVAL] Ollama @ {_ollama_base()} — model: {model}")
 
     for i, item in enumerate(items, 1):
         print(f"[EVAL {i}/{total}] {item.get('url', '')[:70]}")

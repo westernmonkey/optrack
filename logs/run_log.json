@@ -97,5 +97,27 @@
     "prefiltered": 11,
     "accepted": 0,
     "written": 0
+  },
+  {
+    "date": "2026-07-04",
+    "mode": "daily",
+    "raw": 541,
+    "new": 526,
+    "prefiltered": 194,
+    "accepted": 0,
+    "written": 0
+  },
+  {
+    "date": "2026-07-04",
+    "mode": "daily",
+    "raw": 840,
+    "new": 825,
+    "prefiltered": 246,
+    "accepted": 0,
+    "written": 0,
+    "by_track": {
+      "general": 0,
+      "labs": 0
+    }
   }
 ]

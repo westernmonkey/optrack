@@ -23,11 +23,10 @@ def batch_write(items):
                 "Title":    {"title": [{"text": {"content": str(item.get("name", ""))[:200]}}]},
                 "URL":      {"url": item.get("url") or None},
                 "Category": {"multi_select": [{"name": str(item.get("type", "Other"))[:100]}]},
-                "Region":   {"select": {"name": str(item.get("region", "Unknown"))[:100]}},
-                "Deadline": {"rich_text": [{"text": {"content": str(item.get("deadline") or "")[:200]}}]},
-                "Source":   {"rich_text": [{"text": {"content": str(item.get("source_query", ""))[:200]}}]},
-                "Score":    {"number": int(item.get("score", 0))},
-                "Track":    {"select": {"name": str(item.get("track", "general"))[:100]}},
+                "Region":   {"select": {"name": str(item.get("region", "Global"))[:100]}},
+                "Deadline": {"rich_text": [{"text": {"content": str(item.get("deadline") or "TBD")[:200]}}]},
+                "Source":   {"rich_text": [{"text": {"content": str(item.get("source_query", "optrack"))[:200]}}]},
+                "Score":    {"number": int(item.get("score", 5))},
                 "Found On": {"date": {"start": str(date.today())}},
                 "Status":   {"select": {"name": "New"}}
             }

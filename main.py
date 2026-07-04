@@ -4,10 +4,12 @@ Opportunity hunter: searches the web for real fellowship/grant
 programs and saves them to Notion.
 
 Usage:
-  python main.py           # auto-detects daily vs weekly based on day of week
-  python main.py --daily   # light scan (priority queries only)
-  python main.py --weekly  # deep scan (all queries)
-  python main.py --dry-run # search + evaluate but don't write to Notion
+  python main.py              # auto-detects daily vs weekly based on day of week
+  python main.py --daily      # light scan (priority queries only)
+  python main.py --weekly     # deep scan (all queries)
+  python main.py --dry-run    # search + evaluate but don't write to Notion
+  python main.py --reval-skipped          # eval URLs that failed earlier (no Serper)
+  python main.py --reval-skipped --reval-limit 50
 """
 
 import argparse
@@ -27,14 +29,21 @@ from core.notion_writer import batch_write
 from scrapers.search_engine import batch_search
 from scrapers.page_scraper import batch_scrape
 
+SKIPPED_PATH = Path("data/skipped_eval_urls.json")
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="OpTrack v2 — opportunity hunter")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--daily",   action="store_true", help="Light scan (priority queries)")
     group.add_argument("--weekly",  action="store_true", help="Deep scan (all queries)")
+    group.add_argument("--reval-skipped", action="store_true",
+                        help="Re-evaluate URLs saved in data/skipped_eval_urls.json (no Serper search)")
+    parser.add_argument("--reval-limit", type=int, default=50,
+                        help="Max URLs to re-eval per run (default: 50)")
     parser.add_argument("--dry-run", action="store_true", help="Don't write to Notion")
-    parser.add_argument("--min-score", type=int, default=5, help="Minimum Claude score to save (default: 5)")
+    parser.add_argument("--min-score", type=int, default=4,
+                        help="Minimum LLM score to save (default: 4)")
     return parser.parse_args()
 
 
@@ -56,8 +65,69 @@ def save_log(log: dict):
     log_path.write_text(json.dumps(history[-50:], indent=2))
 
 
+def load_skipped_urls() -> list[str]:
+    if not SKIPPED_PATH.exists():
+        return []
+    data = json.loads(SKIPPED_PATH.read_text())
+    return data if isinstance(data, list) else []
+
+
+def save_skipped_urls(urls: list[str]) -> None:
+    SKIPPED_PATH.parent.mkdir(parents=True, exist_ok=True)
+    SKIPPED_PATH.write_text(json.dumps(sorted(set(urls)), indent=2))
+
+
+def run_reval_skipped(args) -> None:
+    pending = load_skipped_urls()
+    if not pending:
+        print("No URLs in data/skipped_eval_urls.json — nothing to re-evaluate.")
+        sys.exit(0)
+
+    batch = pending[: args.reval_limit]
+    remaining = pending[args.reval_limit:]
+    print(f"\n{'='*60}")
+    print(f"OpTrack v2 — REVAL SKIPPED — {date.today()}")
+    print(f"Processing {len(batch)}/{len(pending)} skipped URLs (limit {args.reval_limit})")
+    print(f"{'='*60}\n")
+
+    candidates = [
+        {"url": url, "track": "general", "title": "", "snippet": "", "source_query": "reval-skipped"}
+        for url in batch
+    ]
+    scraped = batch_scrape(candidates, delay=0.5)
+    accepted = batch_evaluate(scraped, min_score=args.min_score)
+    for item in accepted:
+        item.setdefault("track", "general")
+
+    written = 0
+    if accepted and not args.dry_run:
+        written = batch_write(accepted)
+    elif args.dry_run and accepted:
+        print("[DRY RUN] Would write:")
+        for item in accepted:
+            print(f"  [{item['score']}/10] {item['name']} — {item.get('url','')[:60]}")
+
+    save_skipped_urls(remaining)
+    log = {
+        "date": str(date.today()),
+        "mode": "reval-skipped",
+        "queued": len(pending),
+        "processed": len(batch),
+        "remaining": len(remaining),
+        "accepted": len(accepted),
+        "written": written,
+    }
+    save_log(log)
+    print(f"\nDone: {written} written | {len(remaining)} URLs still queued for reval")
+    print(f"Run again for next batch ({len(remaining)} remaining)\n")
+
+
 def main():
     args = parse_args()
+
+    if args.reval_skipped:
+        run_reval_skipped(args)
+        return
 
     if args.daily:
         mode = "daily"
@@ -112,7 +182,7 @@ def main():
     scraped = batch_scrape(candidates, delay=0.5)
     print(f"\n[SCRAPE] Done\n")
 
-    # ── Step 6: Claude evaluates each page ───────────────────────
+    # ── Step 6: LLM evaluates each page ────────────────────────────
     accepted = batch_evaluate(scraped, min_score=args.min_score)
     print(f"\n[EVAL] {len(accepted)} opportunities accepted\n")
 

@@ -12,6 +12,8 @@ from urllib.parse import urlparse
 
 import yaml
 
+from core.heuristic_parser import url_derived_text
+
 # Domains that will never contain registerable opportunities
 JUNK_DOMAINS = {
     # Social media
@@ -138,7 +140,7 @@ def is_junk(item: dict) -> tuple[bool, str]:
     url = item.get("url", "")
     title = (item.get("title") or "").lower()
     snippet = (item.get("snippet") or "").lower()
-    combined_text = title + " " + snippet
+    combined_text = title + " " + snippet + " " + url_derived_text(url)
 
     domain = get_domain(url)
     path = urlparse(url).path.lower() if url else ""
