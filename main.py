@@ -8,8 +8,9 @@ Usage:
   python main.py --daily      # light scan (priority queries only)
   python main.py --weekly     # deep scan (all queries)
   python main.py --dry-run    # search + evaluate but don't write to Notion
-  python main.py --reval-skipped          # eval URLs that failed earlier (no Serper)
-  python main.py --reval-skipped --reval-limit 50
+  python main.py --reval-skipped          # eval URLs in data/skipped_eval_urls.json (no Serper)
+  python main.py --reval-skipped --reval-limit 100
+  python main.py --reval-pending          # eval saved scrape queue (no Serper, no re-scrape)
 """
 
 import argparse
@@ -30,6 +31,7 @@ from scrapers.search_engine import batch_search
 from scrapers.page_scraper import batch_scrape
 
 SKIPPED_PATH = Path("data/skipped_eval_urls.json")
+PENDING_PATH = Path("data/pending_eval.json")
 
 
 def parse_args():
@@ -39,8 +41,10 @@ def parse_args():
     group.add_argument("--weekly",  action="store_true", help="Deep scan (all queries)")
     group.add_argument("--reval-skipped", action="store_true",
                         help="Re-evaluate URLs saved in data/skipped_eval_urls.json (no Serper search)")
-    parser.add_argument("--reval-limit", type=int, default=50,
-                        help="Max URLs to re-eval per run (default: 50)")
+    group.add_argument("--reval-pending", action="store_true",
+                        help="Re-evaluate scraped pages in data/pending_eval.json (no Serper, no scrape)")
+    parser.add_argument("--reval-limit", type=int, default=0,
+                        help="Max URLs to re-eval (0 = all in queue)")
     parser.add_argument("--dry-run", action="store_true", help="Don't write to Notion")
     parser.add_argument("--min-score", type=int, default=4,
                         help="Minimum LLM score to save (default: 4)")
@@ -77,27 +81,25 @@ def save_skipped_urls(urls: list[str]) -> None:
     SKIPPED_PATH.write_text(json.dumps(sorted(set(urls)), indent=2))
 
 
-def run_reval_skipped(args) -> None:
-    pending = load_skipped_urls()
-    if not pending:
-        print("No URLs in data/skipped_eval_urls.json — nothing to re-evaluate.")
-        sys.exit(0)
+def save_pending_eval(scraped: list[dict]) -> None:
+    PENDING_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PENDING_PATH.write_text(json.dumps(scraped, indent=2))
+    save_skipped_urls([item["url"] for item in scraped if item.get("url")])
+    print(f"[SAVE] {len(scraped)} scraped pages → data/pending_eval.json")
 
-    batch = pending[: args.reval_limit]
-    remaining = pending[args.reval_limit:]
-    print(f"\n{'='*60}")
-    print(f"OpTrack v2 — REVAL SKIPPED — {date.today()}")
-    print(f"Processing {len(batch)}/{len(pending)} skipped URLs (limit {args.reval_limit})")
-    print(f"{'='*60}\n")
 
-    candidates = [
-        {"url": url, "track": "general", "title": "", "snippet": "", "source_query": "reval-skipped"}
-        for url in batch
-    ]
-    scraped = batch_scrape(candidates, delay=0.5)
-    accepted = batch_evaluate(scraped, min_score=args.min_score)
+def _reval_batch(items: list, limit: int) -> tuple[list, list]:
+    if limit and limit > 0:
+        return items[:limit], items[limit:]
+    return items, []
+
+
+def _finish_reval(args, accepted: list[dict], remaining_urls: list[str], mode: str, total: int) -> None:
     for item in accepted:
         item.setdefault("track", "general")
+        tracks = item.get("tracks")
+        if tracks:
+            item["track"] = "labs" if "labs" in tracks else tracks[0]
 
     written = 0
     if accepted and not args.dry_run:
@@ -105,21 +107,69 @@ def run_reval_skipped(args) -> None:
     elif args.dry_run and accepted:
         print("[DRY RUN] Would write:")
         for item in accepted:
-            print(f"  [{item['score']}/10] {item['name']} — {item.get('url','')[:60]}")
+            print(f"  [{item['score']}/10] ({item.get('track', 'general')}) {item['name']} "
+                  f"— {item.get('url', '')[:60]}")
 
-    save_skipped_urls(remaining)
-    log = {
+    save_skipped_urls(remaining_urls)
+    if not remaining_urls and PENDING_PATH.exists():
+        PENDING_PATH.unlink()
+
+    save_log({
         "date": str(date.today()),
-        "mode": "reval-skipped",
-        "queued": len(pending),
-        "processed": len(batch),
-        "remaining": len(remaining),
+        "mode": mode,
+        "queued": total,
+        "processed": total - len(remaining_urls),
+        "remaining": len(remaining_urls),
         "accepted": len(accepted),
         "written": written,
-    }
-    save_log(log)
-    print(f"\nDone: {written} written | {len(remaining)} URLs still queued for reval")
-    print(f"Run again for next batch ({len(remaining)} remaining)\n")
+    })
+    print(f"\nDone: {written} written | {len(remaining_urls)} URLs still queued")
+    if remaining_urls:
+        print(f"Run again to process the rest.\n")
+    else:
+        print()
+
+
+def run_reval_pending(args) -> None:
+    if not PENDING_PATH.exists():
+        print("No data/pending_eval.json — nothing to re-evaluate.")
+        print("Run a normal scan first; the queue is saved automatically after scrape.")
+        sys.exit(0)
+
+    pending = json.loads(PENDING_PATH.read_text())
+    batch, remaining_items = _reval_batch(pending, args.reval_limit)
+    remaining_urls = [item["url"] for item in remaining_items if item.get("url")]
+
+    print(f"\n{'='*60}")
+    print(f"OpTrack v2 — REVAL PENDING — {date.today()}")
+    print(f"Evaluating {len(batch)}/{len(pending)} saved pages (no search, no scrape)")
+    print(f"{'='*60}\n")
+
+    accepted = batch_evaluate(batch, min_score=args.min_score)
+    if remaining_items:
+        PENDING_PATH.write_text(json.dumps(remaining_items, indent=2))
+    _finish_reval(args, accepted, remaining_urls, "reval-pending", len(pending))
+
+
+def run_reval_skipped(args) -> None:
+    pending = load_skipped_urls()
+    if not pending:
+        print("No URLs in data/skipped_eval_urls.json — nothing to re-evaluate.")
+        sys.exit(0)
+
+    batch_urls, remaining = _reval_batch(pending, args.reval_limit)
+    print(f"\n{'='*60}")
+    print(f"OpTrack v2 — REVAL SKIPPED — {date.today()}")
+    print(f"Processing {len(batch_urls)}/{len(pending)} skipped URLs")
+    print(f"{'='*60}\n")
+
+    candidates = [
+        {"url": url, "track": "general", "title": "", "snippet": "", "source_query": "reval-skipped"}
+        for url in batch_urls
+    ]
+    scraped = batch_scrape(candidates, delay=0.5)
+    accepted = batch_evaluate(scraped, min_score=args.min_score)
+    _finish_reval(args, accepted, remaining, "reval-skipped", len(pending))
 
 
 def main():
@@ -127,6 +177,10 @@ def main():
 
     if args.reval_skipped:
         run_reval_skipped(args)
+        return
+
+    if args.reval_pending:
+        run_reval_pending(args)
         return
 
     if args.daily:
@@ -181,6 +235,7 @@ def main():
     # ── Step 5: Scrape pages ──────────────────────────────────────
     scraped = batch_scrape(candidates, delay=0.5)
     print(f"\n[SCRAPE] Done\n")
+    save_pending_eval(scraped)
 
     # ── Step 6: LLM evaluates each page ────────────────────────────
     accepted = batch_evaluate(scraped, min_score=args.min_score)
