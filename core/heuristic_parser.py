@@ -19,7 +19,6 @@ TYPE_RULES = [
     (["fellowship", "fellow program"], "Fellowship"),
     (["grant", "scholarship"], "Grant"),
     (["hackathon"], "Hackathon"),
-    (["accelerator", "incubator"], "Accelerator"),
     (["demo day", "demo-day", "demoday"], "Demo Day"),
     (["networking", "meetup", "mixer", "happy hour"], "Networking"),
     (["conference", "summit", "symposium", "forum"], "Conference"),
@@ -27,6 +26,19 @@ TYPE_RULES = [
     (["intern", "internship", "reu", "summer research"], "Research Internship"),
     (["research assistant", "undergraduate research", "student researcher"], "Research Assistant"),
     (["open call", "applications open", "apply now"], "Open Call"),
+]
+
+# Drop incubators/accelerators in the non-LLM import path
+HEURISTIC_DROP_SIGNALS = [
+    "incubator", "accelerator",
+    "us citizen", "u.s. citizen", "citizens only", "citizenship required",
+    "phd only", "postdoctoral", "postdoc", "graduate students only",
+    "master's required", "masters required", "md required",
+    "autism", "autistic",
+    "genetic", "genetics", "genomic", "genomics",
+    "pathology", "pathologist",
+    "homeopathy", "homeopathic", "homoeopathy", "homoeopathic",
+    "radiology", "radiologist",
 ]
 
 LAB_SIGNALS = [
@@ -219,6 +231,9 @@ def parse_item(item: dict) -> dict | None:
         return None
 
     text = _combined_text(item)
+    if any(sig in text for sig in HEURISTIC_DROP_SIGNALS):
+        return None
+
     track = infer_track(item)
     region = infer_region(text)
     opp_type = infer_type(text, track)

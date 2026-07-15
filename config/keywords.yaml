@@ -2,10 +2,12 @@
 # These keywords generate real Google search queries via Serper.dev.
 # They are NOT filters — they are the search engine inputs.
 #
-# Two tracks run in a single pipeline pass:
-#   general → events, fellowships, accelerators, demo days, etc.
-#   labs    → clinical AI / digital health research labs and their
-#             student / research / fellowship opportunities.
+# Priority (highest → lowest):
+#   1) fellowships, scholarships, student programs
+#   2) research labs / RA / REU / internships  (labs track)
+#   3) open calls / challenges (non-accelerator)
+# Networking and conferences are deprioritized — few/no daily queries.
+# Incubators/accelerators are intentionally excluded.
 
 # Shared regions used by the weekly type x region sweep (general track).
 regions:
@@ -20,41 +22,32 @@ regions:
 
 tracks:
   # ────────────────────────────────────────────────────────────────
-  # GENERAL TRACK — events, fellowships, accelerators, demo days
+  # GENERAL TRACK — fellowships, scholarships, student programs
   # ────────────────────────────────────────────────────────────────
   general:
     opportunity_types:
-      # Networking events
-      - "healthtech networking event"
-      - "digital health meetup"
-      - "health innovation networking"
-      - "healthtech happy hour"
-      - "health startup mixer"
-      - "clinical AI networking"
-      - "medtech networking event"
-      - "health tech community event"
+      # Fellowships & scholarships (primary)
+      - "clinical AI fellowship undergraduate"
+      - "digital health fellowship undergraduate"
+      - "health innovation fellowship students"
+      - "healthtech fellowship bachelor"
+      - "biomedical informatics fellowship undergraduate"
+      - "health data science fellowship"
+      - "clinical informatics student fellowship"
+      - "digital health scholarship"
+      - "health innovation scholarship undergraduate"
 
-      # Demo days & showcases
-      - "healthtech demo day"
-      - "digital health demo day"
-      - "health startup showcase"
-      - "healthtech pitch event"
-      - "health innovation showcase"
-      - "clinical AI demo day"
-      - "digital health pitch night"
+      # Structured student / early-career programs
+      - "undergraduate research program digital health"
+      - "summer research program clinical AI"
+      - "healthtech student program apply"
+      - "clinical AI traineeship undergraduate"
+      - "digital health internship undergraduate"
+      - "hospital innovation student program"
+      - "NIH summer internship clinical informatics"
+      - "NLM fellowship undergraduate"
 
-      # Conferences & summits
-      - "healthtech conference"
-      - "digital health summit"
-      - "health innovation forum"
-      - "clinical AI conference"
-      - "medtech summit"
-      - "health startup conference"
-      - "population health summit"
-      - "health data conference"
-      - "hospital innovation summit"
-
-      # Open calls & early career
+      # Open calls (non-accelerator)
       - "healthtech open call"
       - "digital health open call"
       - "health innovation fellowship"
@@ -64,86 +57,105 @@ tracks:
       - "health innovation scholarship"
       - "health student program"
       - "emerging health leader program"
+      - "healthtech open call students"
+      - "digital health open call undergraduate"
+      - "clinical AI research opportunity undergraduate"
 
-    # High-priority combos — always included in the daily light scan
+    # High-priority combos — daily light scan (fellowship/program heavy)
     priority_combos:
-      # Chicago (highest priority Midwest hub)
-      - ["healthtech networking event", "Chicago"]
-      - ["digital health meetup", "Chicago"]
-      - ["healthtech demo day", "Chicago"]
-      - ["digital health summit", "Chicago"]
-      - ["clinical AI conference", "Chicago"]
-      - ["hospital innovation summit", "Chicago"]
-      - ["clinical informatics conference", "Chicago"]
-      - ["healthtech accelerator", "Chicago"]
-      - ["health startup investor day", "Chicago"]
-
-      # Wisconsin
-      - ["digital health meetup", "Madison"]
-      - ["clinical AI meetup", "Madison"]
-      - ["health innovation challenge", "Madison"]
-
-      - ["healthtech networking event", "Milwaukee"]
-      - ["healthtech conference", "Milwaukee"]
-      - ["hospital innovation summit", "Milwaukee"]
-
-      - ["health innovation forum", "Wisconsin"]
-      - ["clinical AI conference", "Wisconsin"]
-      - ["hospital innovation summit", "Wisconsin"]
-
-      # Minneapolis (strong healthcare ecosystem)
-      - ["digital health meetup", "Minneapolis"]
-      - ["clinical AI conference", "Minneapolis"]
-
-      # Dubai / UAE
-      - ["healthtech networking event", "Dubai"]
-      - ["digital health meetup", "Dubai"]
-      - ["health innovation forum", "Dubai"]
-      - ["clinical AI decision support summit", "Dubai"]
+      # Fellowships — national / global
+      - ["clinical AI fellowship undergraduate", "United States"]
+      - ["digital health fellowship", "United States"]
+      - ["health innovation fellowship", "United States"]
+      - ["biomedical informatics fellowship undergraduate", "United States"]
+      - ["clinical informatics fellowship student", "United States"]
+      - ["health data science fellowship", "Global"]
       - ["digital health fellowship", "Dubai"]
-
-      # San Francisco (only high-value opportunities worth traveling for)
-      - ["clinical AI conference", "San Francisco"]
-      - ["health startup investor day", "San Francisco"]
-      - ["healthtech accelerator", "San Francisco"]
-
-      # National opportunities
-      - ["clinical AI demo day", "United States"]
-      - ["clinical decision support conference", "United States"]
-      - ["ambient AI healthcare conference", "United States"]
-      - ["clinical workflow automation conference", "United States"]
-      - ["health system innovation summit", "United States"]
-      - ["CMIO summit", "United States"]
-      - ["digital health accelerator", "United States"]
-      - ["clinical AI accelerator", "United States"]
-
-      # Founder / pre-idea / entrepreneur programs
-      - ["founder in residence healthtech", "United States"]
-      - ["entrepreneur in residence healthcare", "United States"]
-      - ["healthtech founder fellowship", "Global"]
-      - ["digital health founder fellowship", "Global"]
-      - ["health startup accelerator program", "United States"]
-      - ["healthtech open call", "Global"]
-
-      # Fellowships & emerging leader opportunities
       - ["health innovation fellowship", "Global"]
       - ["clinical AI fellowship", "Global"]
-      - ["emerging health leader program", "Global"]
 
-      # Competitions & startup opportunities
-      - ["healthtech innovation challenge", "United States"]
-      - ["clinical AI startup competition", "United States"]
+      # Scholarships & student programs
+      - ["digital health scholarship undergraduate", "United States"]
+      - ["health innovation scholarship", "United States"]
+      - ["clinical AI student program", "United States"]
+      - ["undergraduate research digital health", "United States"]
+      - ["summer research clinical AI undergraduate", "United States"]
+      - ["REU biomedical informatics", "United States"]
+      - ["REU clinical informatics", "United States"]
+      - ["REU digital health", "United States"]
 
-      # Global catch-all
-      - ["clinical AI conference", "Global"]
+      # Midwest / Wisconsin / Chicago — programs not mixers
+      - ["clinical AI undergraduate research", "Chicago"]
+      - ["digital health fellowship", "Chicago"]
+      - ["health informatics summer research", "Chicago"]
+      - ["undergraduate research clinical AI", "Madison"]
+      - ["digital health research internship", "Madison"]
+      - ["health innovation fellowship", "Wisconsin"]
+      - ["clinical informatics undergraduate research", "Milwaukee"]
+      - ["digital health research program", "Minneapolis"]
+
+      # Madison / Wisconsin — include all healthtech networking and events
+      - ["healthtech networking event", "Madison"]
+      - ["digital health meetup", "Madison"]
+      - ["health innovation networking", "Madison"]
+      - ["clinical AI networking", "Madison"]
+      - ["medtech networking event", "Madison"]
+      - ["health tech community event", "Madison"]
+      - ["healthtech conference", "Madison"]
+      - ["digital health conference", "Madison"]
+      - ["clinical AI conference", "Madison"]
+      - ["health innovation conference", "Madison"]
+      - ["medtech conference", "Madison"]
+      - ["health data conference", "Madison"]
+      - ["healthtech summit", "Madison"]
+      - ["digital health summit", "Madison"]
+      - ["clinical AI summit", "Madison"]
+      - ["health innovation summit", "Madison"]
+      - ["hospital innovation summit", "Madison"]
+      - ["health innovation forum", "Madison"]
+      - ["healthtech networking event", "Wisconsin"]
+      - ["digital health meetup", "Wisconsin"]
+      - ["health innovation networking", "Wisconsin"]
+      - ["clinical AI networking", "Wisconsin"]
+      - ["medtech networking event", "Wisconsin"]
+      - ["health tech community event", "Wisconsin"]
+      - ["healthtech conference", "Wisconsin"]
+      - ["digital health conference", "Wisconsin"]
+      - ["clinical AI conference", "Wisconsin"]
+      - ["health innovation conference", "Wisconsin"]
+      - ["medtech conference", "Wisconsin"]
+      - ["health data conference", "Wisconsin"]
+      - ["healthtech summit", "Wisconsin"]
+      - ["digital health summit", "Wisconsin"]
+      - ["clinical AI summit", "Wisconsin"]
+      - ["health innovation summit", "Wisconsin"]
+      - ["hospital innovation summit", "Wisconsin"]
+      - ["health innovation forum", "Wisconsin"]
+
+      # Dubai / UAE — fellowships & programs
+      - ["digital health fellowship", "Dubai"]
+      - ["healthtech fellowship", "UAE"]
+      - ["clinical AI research internship", "Dubai"]
+
+      # Bay Area — research programs (not conferences)
+      - ["clinical AI undergraduate research", "San Francisco"]
+      - ["digital health research internship", "Stanford"]
+      - ["biomedical informatics summer program", "San Francisco"]
+
+      # Founder fellowships (not accelerators)
+      - ["healthtech founder fellowship", "Global"]
+      - ["digital health founder fellowship", "Global"]
+      - ["health innovation open call students", "Global"]
+
+      # Challenges that double as student programs
+      - ["clinical AI research challenge undergraduate", "United States"]
+      - ["healthtech innovation challenge students", "United States"]
 
   # ────────────────────────────────────────────────────────────────
   # LABS TRACK — clinical AI / digital health research labs and the
   # student / research / fellowship opportunities they run.
   # ────────────────────────────────────────────────────────────────
   labs:
-    # Query suffixes appended to each lab target. These describe the
-    # kind of opportunity we want from a lab (not events).
     opportunity_types:
       - "undergraduate research"
       - "research assistant"
@@ -154,10 +166,9 @@ tracks:
       - "join the lab"
       - "open positions students"
       - "research fellowship"
+      - "REU"
+      - "visiting student researcher"
 
-    # Named labs / centers focused on clinical workflow, CDS, RCM,
-    # intake, and documentation AI. Each entry is [lab name, location].
-    # These are the anchors for precise lab-track queries.
     targets:
       - ["D-Health Lab USC Keck Viterbi", "Los Angeles"]
       - ["HTE@USC Health Technology Engineering", "Los Angeles"]
@@ -184,27 +195,32 @@ tracks:
       - ["Mass General Brigham Clinical Informatics", "Boston"]
       - ["Mayo Clinic Platform clinical AI", "Rochester"]
       - ["Radiata UCSF Memory Aging Center", "San Francisco"]
+      - ["UW Madison biomedical informatics", "Madison"]
+      - ["UW Madison clinical AI lab", "Madison"]
 
-    # Prestige founder / research programs open to undergrads (lab-adjacent).
     priority_combos:
       - ["Neo Scholars health AI", "United States"]
       - ["Nucleate Dojo undergraduate", "United States"]
-      - ["Nucleate Activator venture building", "United States"]
       - ["Stanford Biodesign Internship Connect", "Stanford"]
-      - ["Biodesign for Digital Health course", "Stanford"]
+      - ["Biodesign for Digital Health undergraduate", "Stanford"]
       - ["Columbia DBMI Summer Research Program", "New York"]
-      - ["CALIBIR Wake Forest AI Research", "United States"]
+      - ["CALIBIR Wake Forest AI Research undergraduate", "United States"]
       - ["AIBIDS University of Pittsburgh biomedical informatics", "Pittsburgh"]
       - ["OHSU DICE informatics internship", "United States"]
       - ["Ohio State BMI summer internship", "United States"]
       - ["University of Arizona BMI CARE AI internship", "United States"]
       - ["AI CoLab Georgetown MedStar clinical NLP", "United States"]
-      - ["MIT Hacking Medicine GrandHack", "Cambridge"]
       - ["clinical AI research assistant undergraduate", "United States"]
       - ["digital health lab research internship", "United States"]
+      - ["REU health informatics", "United States"]
+      - ["REU biomedical data science", "United States"]
+      - ["undergraduate research assistant clinical NLP", "United States"]
+      - ["summer undergraduate research clinical AI", "United States"]
+      - ["NLM university-based biomedical informatics training", "United States"]
+      - ["AMIA student research fellowship", "United States"]
 
 
-# Claude AI evaluation criteria (shared reference; per-track prompts in evaluator.py)
+# Evaluation criteria reference (prompts in evaluator.py are authoritative)
 scoring:
   topics_of_interest:
     - "clinical AI"
@@ -212,8 +228,8 @@ scoring:
     - "healthtech"
     - "health data"
     - "hospital innovation"
-    - "health startup"
-    - "health innovation"
+    - "clinical informatics"
+    - "biomedical informatics"
 
   regions_of_interest:
     - "Dubai"
@@ -229,20 +245,22 @@ scoring:
     - "Wisconsin"
     - "Milwaukee"
 
+  # Priority order for scoring — fellowships/labs/programs first
   event_types_of_interest:
-    - "networking"
-    - "meetup"
-    - "mixer"
-    - "happy hour"
-    - "demo day"
-    - "showcase"
-    - "pitch"
+    - "fellowship"
+    - "research internship"
+    - "research assistant"
+    - "summer program"
+    - "scholarship"
+    - "open call"
+    - "student program"
+    - "REU"
+    # Deprioritized (accept rarely / low score only):
+    - "hackathon"
+    - "competition"
     - "conference"
     - "summit"
-    - "forum"
-    - "open call"
-    - "fellowship"
-    - "hackathon"
+    - "networking"
 
   junk_signals:
     - "job posting"
@@ -251,6 +269,20 @@ scoring:
     - "job opening"
     - "postdoc position"
     - "PhD position"
+    - "US citizen"
+    - "citizenship required"
+    - "graduate students only"
+    - "incubator"
+    - "accelerator"
+    - "autism"
+    - "genetics"
+    - "genomics"
+    - "pathology"
+    - "homeopathy"
+    - "homoeopathy"
+    - "radiology"
+    - "networking mixer"
+    - "happy hour"
     - "patient recruitment"
     - "clinical trial enrollment"
     - "expo booth"
@@ -261,31 +293,22 @@ scoring:
 
 # Trusted domains — always pass prefilter
 trusted_domains:
-  - "eventbrite.com"
-  - "meetup.com"
-  - "lu.ma"
   - "opportunitydesk.org"
   - "devpost.com"
   - "f6s.com"
   - "matter.health"
   - "startuphealth.com"
   - "rockhealth.com"
-  - "1871.com"
   - "dubaifuture.ae"
   - "dha.gov.ae"
-  - "wamda.com"
-  - "magnitt.com"
-  - "chicagoinnovation.com"
-  - "illinoisbiosciences.com"
   - "ashoka.org"
   - "atlanticfellows.org"
   - "rhodeshouse.ox.ac.uk"
-  - "ycombinator.com"
-  - "plugandplaytechcenter.com"
-  - "in5.ae"
+  - "nsf.gov"
+  - "nih.gov"
+  - "nlm.nih.gov"
 
 # Domains that reliably host lab / academic research opportunities.
-# Used only for the labs track prefilter (in addition to .edu handling).
 labs_trusted_domains:
   - "stanford.edu"
   - "med.stanford.edu"
@@ -309,5 +332,6 @@ labs_trusted_domains:
   - "northwestern.edu"
   - "mayo.edu"
   - "usc.edu"
+  - "wisc.edu"
   - "nucleate.xyz"
   - "neo.com"

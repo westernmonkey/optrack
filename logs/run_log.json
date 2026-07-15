@@ -119,5 +119,54 @@
       "general": 0,
       "labs": 0
     }
+  },
+  {
+    "date": "2026-07-05",
+    "mode": "reval-pending",
+    "queued": 67,
+    "processed": 67,
+    "remaining": 0,
+    "accepted": 46,
+    "written": 24
+  },
+  {
+    "date": "2026-07-16",
+    "mode": "daily",
+    "raw": 847,
+    "new": 647,
+    "prefiltered": 159,
+    "accepted": 6,
+    "written": 6,
+    "by_track": {
+      "general": 6,
+      "labs": 0
+    }
+  },
+  {
+    "date": "2026-07-16",
+    "mode": "reval-pending",
+    "queued": 109,
+    "processed": 0,
+    "remaining": 109,
+    "accepted": 0,
+    "written": 0
+  },
+  {
+    "date": "2026-07-16",
+    "mode": "reval-pending",
+    "queued": 109,
+    "processed": 0,
+    "remaining": 109,
+    "accepted": 0,
+    "written": 0
+  },
+  {
+    "date": "2026-07-16",
+    "mode": "reval-pending",
+    "queued": 109,
+    "processed": 109,
+    "remaining": 0,
+    "accepted": 7,
+    "written": 7
   }
 ]

@@ -45,6 +45,8 @@ def parse_args():
                         help="Re-evaluate scraped pages in data/pending_eval.json (no Serper, no scrape)")
     parser.add_argument("--reval-limit", type=int, default=0,
                         help="Max URLs to re-eval (0 = all in queue)")
+    parser.add_argument("--max-eval", type=int, default=0,
+                        help="Max pages in the single LLM batch (default: 0 = all)")
     parser.add_argument("--dry-run", action="store_true", help="Don't write to Notion")
     parser.add_argument("--min-score", type=int, default=4,
                         help="Minimum LLM score to save (default: 4)")
@@ -145,7 +147,11 @@ def run_reval_pending(args) -> None:
     print(f"Evaluating {len(batch)}/{len(pending)} saved pages (no search, no scrape)")
     print(f"{'='*60}\n")
 
-    accepted = batch_evaluate(batch, min_score=args.min_score)
+    accepted, unevaluated = batch_evaluate(
+        batch, min_score=args.min_score, max_eval=args.max_eval
+    )
+    remaining_items = unevaluated + remaining_items
+    remaining_urls = [item["url"] for item in remaining_items if item.get("url")]
     if remaining_items:
         PENDING_PATH.write_text(json.dumps(remaining_items, indent=2))
     _finish_reval(args, accepted, remaining_urls, "reval-pending", len(pending))
@@ -168,8 +174,13 @@ def run_reval_skipped(args) -> None:
         for url in batch_urls
     ]
     scraped = batch_scrape(candidates, delay=0.5)
-    accepted = batch_evaluate(scraped, min_score=args.min_score)
-    _finish_reval(args, accepted, remaining, "reval-skipped", len(pending))
+    accepted, unevaluated = batch_evaluate(
+        scraped, min_score=args.min_score, max_eval=args.max_eval
+    )
+    remaining_urls = [item["url"] for item in unevaluated if item.get("url")] + remaining
+    if unevaluated:
+        PENDING_PATH.write_text(json.dumps(unevaluated, indent=2))
+    _finish_reval(args, accepted, remaining_urls, "reval-skipped", len(pending))
 
 
 def main():
@@ -237,8 +248,18 @@ def main():
     print(f"\n[SCRAPE] Done\n")
     save_pending_eval(scraped)
 
-    # ── Step 6: LLM evaluates each page ────────────────────────────
-    accepted = batch_evaluate(scraped, min_score=args.min_score)
+    # ── Step 6: LLM evaluates all pages in one batched API call ───
+    accepted, unevaluated = batch_evaluate(
+        scraped, min_score=args.min_score, max_eval=args.max_eval
+    )
+    if unevaluated:
+        PENDING_PATH.write_text(json.dumps(unevaluated, indent=2))
+        save_skipped_urls([item["url"] for item in unevaluated if item.get("url")])
+        print(f"[SAVE] {len(unevaluated)} unevaluated pages kept in pending_eval.json\n")
+    elif PENDING_PATH.exists():
+        PENDING_PATH.unlink()
+        save_skipped_urls([])
+
     print(f"\n[EVAL] {len(accepted)} opportunities accepted\n")
 
     # Normalize the track label for output: prefer 'labs' on cross-track URLs.
@@ -264,8 +285,9 @@ def main():
             print(f"  [{item['score']}/10] ({item.get('track','general')}) {item['name']} "
                   f"— {item.get('deadline','no deadline')} — {item.get('url','')[:60]}")
 
-    # ── Step 8: Mark all new URLs as seen (including rejected) ────
-    mark_seen(new_results)
+    # ── Step 8: Mark processed URLs as seen; leave unevaluated for reval ─
+    unevaluated_urls = {item.get("url") for item in unevaluated if item.get("url")}
+    mark_seen([r for r in new_results if r.get("url") not in unevaluated_urls])
 
     # ── Log run ───────────────────────────────────────────────────
     log = {

@@ -56,13 +56,11 @@ jobs:
 
       - name: Run OpTrack
         env:
-          SERPER_API_KEY:   ${{ secrets.SERPER_API_KEY }}
-          NOTION_TOKEN:     ${{ secrets.NOTION_TOKEN }}
-          NOTION_DB_ID:     ${{ secrets.NOTION_DB_ID }}
-          # Eval uses local Ollama — not available in GitHub Actions.
-          # This job runs search/dedup only unless you self-host Ollama on the runner.
-          OLLAMA_BASE_URL:  http://localhost:11434
-          OLLAMA_MODEL:     llama3.2
+          SERPER_API_KEY:      ${{ secrets.SERPER_API_KEY }}
+          NOTION_TOKEN:        ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID:        ${{ secrets.NOTION_DB_ID }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          OPENROUTER_MODEL:    ${{ secrets.OPENROUTER_MODEL }}
         run: python main.py ${{ steps.flags.outputs.flags }}
 
       - name: Commit updated state

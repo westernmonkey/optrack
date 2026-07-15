@@ -1,7 +1,7 @@
 """
 query_builder.py
 Builds Google search queries from keywords.yaml for two tracks:
-  general → events, fellowships, accelerators, demo days
+  general → fellowships, scholarships, student programs (not networking-first)
   labs    → clinical AI / digital health research labs + student programs
 
 Daily mode:  priority combos (+ lab targets) only — fits Serper free tier.
