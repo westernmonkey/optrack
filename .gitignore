@@ -36,7 +36,11 @@ env/
 # Logs (optional — remove if you want to commit run history)
 # logs/
 
-# Test artifacts
+# Legacy queue files (replaced by data/optrack.db)
+data/pending_eval.json
+data/skipped_eval_urls.json
+data/manual_review_*.json
+data/recovered_pending_urls.json
 .pytest_cache/
 .coverage
 htmlcov/

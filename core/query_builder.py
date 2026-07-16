@@ -42,6 +42,9 @@ def _build_general(config: dict, mode: str, year: int, queries: list[dict], seen
             _dedup_add(queries, seen, "general", f"{opp} {year} apply")
             _dedup_add(queries, seen, "general", f"{opp} {year} open applications")
 
+    for query in track_cfg.get("site_queries", []):
+        _dedup_add(queries, seen, "general", query)
+
     if mode == "daily":
         return
 

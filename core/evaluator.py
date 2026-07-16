@@ -14,7 +14,6 @@ from pathlib import Path
 import requests
 
 from core.heuristic_parser import infer_deadline, infer_region, infer_type, url_derived_text
-from core.prefilter import is_junk
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 USAGE_PATH = Path("data/openrouter_usage.json")
@@ -24,6 +23,8 @@ FREE_RPM = 20
 FREE_RPD = 50
 MIN_KEY_INTERVAL = 60.0 / FREE_RPM  # 3.0s between uses of the same key
 DEFAULT_EVAL_DELAY = 3.1
+SNIPPET_CHUNK_SIZE = 40
+BATCH_CHUNK_SIZE = 15
 LOW_PRIORITY_TYPES = {
     "networking", "meetup", "mixer", "happy hour", "demo day",
     "summit", "conference", "forum", "symposium",
@@ -511,23 +512,146 @@ def evaluate(item: dict, retries: int = 1) -> dict | None:
     return None
 
 
-def batch_evaluate(
+def parse_tsv_scores(text: str | None) -> list[dict]:
+    """Parse id,score,decision lines from snippet batch response."""
+    if not text:
+        return []
+    results = []
+    for line in text.strip().splitlines():
+        line = line.strip()
+        if not line or line.lower().startswith("id,"):
+            continue
+        parts = [p.strip() for p in line.split(",")]
+        if len(parts) < 2:
+            continue
+        try:
+            idx = int(parts[0])
+            score = int(parts[1])
+        except ValueError:
+            continue
+        decision = parts[2].lower() if len(parts) > 2 else "accept"
+        if decision in ("accept", "accepted", "yes"):
+            results.append({"id": idx, "score": score})
+    return results
+
+
+def apply_acceptance_gates(
+    item: dict,
+    score: int,
+    min_score: int,
+    title: str,
+    body: str,
+    track: str,
+) -> bool:
+    """Single score floor (min_score). No hidden 7/8 type gates."""
+    if score < min_score:
+        return False
+    combined = f"{title} {body} {url_derived_text(item.get('url', ''))}".lower()
+    opp_type = infer_type(combined, track)
+    if opp_type.lower() in ("accelerator", "incubator"):
+        return False
+    return True
+
+
+def build_notion_item(
+    item: dict,
+    score: int,
+    title: str,
+    body: str,
+    track: str,
+) -> dict:
+    combined = f"{title} {body} {url_derived_text(item.get('url', ''))}".lower()
+    opp_type = infer_type(combined, track)
+    out = dict(item)
+    out["name"] = str(title)[:200]
+    out["type"] = opp_type
+    out["deadline"] = infer_deadline(combined)
+    out["region"] = infer_region(combined)
+    out["eligibility"] = "Verify undergraduate and international eligibility"
+    out["description"] = body[:200]
+    out["ai_summary"] = "Snippet-evaluated fit for international clinical AI undergrad"
+    out["score"] = score
+    out["track"] = track
+    return out
+
+
+SNIPPET_SYSTEM_PROMPT = """You evaluate search-result snippets for an international
+second-year UW-Madison undergraduate (CS & Statistics) focused on clinical AI,
+digital health, healthtech, medtech, and hospital innovation.
+
+PRIORITY: fellowships, scholarships, research lab paths (RA/REU/internship),
+summer research, structured student programs with an apply path.
+WISCONSIN EXCEPTION: accept joinable healthtech/digital-health/clinical-AI
+networking, conferences, summits, forums in Madison or Wisconsin (score 6+).
+OpportunitiesForYouth.org health posts: accept if clearly apply-able (score 6+).
+
+Hard reject: US-citizen-only; MD/PhD/master's/postdoc/faculty-only; incubators;
+accelerators; full-time jobs; news/listicles; autism/genetics/pathology/
+homeopathy/radiology topics.
+
+Return ONLY lines of: id,score,decision
+- id: matches input row id
+- score: 1-10 (accept only if 6+)
+- decision: accept or reject
+No markdown, no JSON, no commentary."""
+
+
+def _items_to_tsv(candidates: list[dict]) -> str:
+    lines = ["id|title|snippet|url|track"]
+    for c in candidates:
+        title = (c.get("title") or "").replace("|", "/")[:200]
+        snippet = (c.get("snippet") or "").replace("|", "/")[:300]
+        url = (c.get("url") or "").replace("|", "/")[:200]
+        track = c.get("track", "general")
+        lines.append(f"{c['id']}|{title}|{snippet}|{url}|{track}")
+    return "\n".join(lines)
+
+
+def _run_snippet_chunk(model: str, chunk: list[dict]) -> list[dict] | None:
+    tsv = _items_to_tsv(chunk)
+    user_prompt = f"""Score each row. Output only id,score,decision lines for accepts (score>=6).
+
+ROWS:
+{tsv}"""
+    key = _next_key()
+    response = _chat_request(
+        key, model, SNIPPET_SYSTEM_PROMPT, user_prompt, max_tokens=1500,
+    )
+    _record_key_use(key)
+    if response.status_code in (429, 402):
+        print(f"[EVAL] Snippet chunk unavailable: HTTP {response.status_code}")
+        return None
+    response.raise_for_status()
+    content = (
+        (response.json().get("choices") or [{}])[0]
+        .get("message", {})
+        .get("content")
+    )
+    Path("logs/last_snippet_response.txt").write_text(str(content or ""))
+    parsed = parse_tsv_scores(content)
+    if parsed:
+        return parsed
+    salvaged = salvage_accepted(content)
+    if salvaged:
+        print(f"[EVAL] Salvaged {len(salvaged)} from snippet response")
+        return salvaged
+    return None
+
+
+def snippet_batch_eval(
     items: list[dict],
-    min_score: int = 5,
-    delay: float = DEFAULT_EVAL_DELAY,
+    min_score: int = 6,
     max_eval: int = 0,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], list[dict]]:
     """
-    Evaluate all selected items in one OpenRouter request.
-    Returns (accepted, remaining_unevaluated).
-    Items are compacted to keep the single request within model context limits.
+    Evaluate snippets only (no scrape required).
+    Returns (snippet_only_accepts, scrape_queued_accepts, failed_items).
     """
     _check_openrouter()
     model = _model()
-    keys = _api_keys()
     budget = _remaining_daily_budget()
     print(
-        f"[EVAL] OpenRouter batch — model: {model} — {len(keys)} key(s) — "
+        f"[EVAL] Snippet batch — model: {model} — "
         f"request budget left: {budget}"
     )
 
@@ -535,176 +659,201 @@ def batch_evaluate(
     remaining: list[dict] = []
     cap = max_eval if max_eval and max_eval > 0 else len(items)
     if budget <= 0:
-        print("[EVAL] Daily free-tier budget exhausted (50 req/day per key)")
-        return [], items
+        print("[EVAL] Daily free-tier budget exhausted")
+        return [], [], items
     if len(items) > cap:
         to_eval = items[:cap]
         remaining = items[cap:]
-        print(f"[EVAL] Capped at {cap}/{len(items)} (max-eval); "
-              f"{len(remaining)} left for later")
 
     candidates = []
-    eligible_ids = set()
     for idx, item in enumerate(to_eval):
-        body = item.get("scraped_body") or item.get("snippet") or ""
-        probe = dict(item)
-        probe["title"] = item.get("scraped_title") or item.get("title", "")
-        probe["snippet"] = body
-        junk, reason = is_junk(probe)
-        combined_probe = f"{probe['title']} {probe['snippet']}".lower()
-        local_reject = next(
-            (signal for signal in POSTSCRAPE_REJECT_SIGNALS if signal in combined_probe),
-            None,
-        )
-        if local_reject:
-            junk, reason = True, f"post-scrape reject signal: '{local_reject}'"
-        if junk:
-            print(f"  [POSTFILTER] {idx}: {reason}")
-            continue
-        eligible_ids.add(idx)
         candidates.append({
             "id": idx,
-            "track": "labs" if "labs" in item.get("tracks", []) else item.get("track", "general"),
-            "title": item.get("scraped_title") or item.get("title", ""),
+            "track": "labs" if "labs" in (item.get("tracks") or [])
+            else item.get("track", "general"),
+            "title": item.get("title", ""),
+            "snippet": item.get("snippet", ""),
             "url": item.get("url", ""),
-            "content": body[:1200],
         })
 
-    batch_prompt = f"""Evaluate every candidate below using the profile and hard-reject rules.
-Return ONLY one JSON object with an "accepted" array.
-Include ONLY accepted opportunities; omission means rejected.
-Each accepted object must contain ONLY id and score.
-The id must exactly match the input candidate id. Score must be 1-10.
-Never accept incubators, accelerators, news/listicles, off-topic pages,
-US-citizen-only opportunities, MD/PhD/master's/graduate-only opportunities,
-or autism, genetics/genomics, pathology, homeopathy/homoeopathy, or radiology.
-Do accept joinable Madison/Wisconsin healthtech networking, conferences, and summits.
+    if not candidates:
+        return [], [], remaining
 
-CANDIDATES:
-{json.dumps(candidates, ensure_ascii=False, separators=(",", ":"))}"""
-    batch_system_prompt = """You evaluate opportunities for an international
-second-year UW-Madison undergraduate studying computer science and statistics,
-focused on clinical AI, digital health, healthtech, medtech, clinical workflow,
-health data, biomedical/clinical informatics, and hospital innovation.
+    chunks = [
+        candidates[i:i + SNIPPET_CHUNK_SIZE]
+        for i in range(0, len(candidates), SNIPPET_CHUNK_SIZE)
+    ]
+    print(f"[EVAL] {len(candidates)} snippets in {len(chunks)} chunk(s) "
+          f"(≤{SNIPPET_CHUNK_SIZE} each)")
 
-PRIORITY: fellowships, scholarships, research lab join paths (RA/REU/internship),
-summer research, and structured student programs with an apply path.
-WISCONSIN EXCEPTION: accept all joinable healthtech, digital-health, clinical-AI,
-health-data, hospital-innovation, and medtech networking events, meetups,
-conferences, summits, and forums in Madison or Wisconsin.
-Outside Madison/Wisconsin, deprioritize networking and generic conferences.
-
-Hard reject US-citizen-only opportunities; MD, PhD, master's, postdoc, faculty,
-or graduate-only opportunities with no undergraduate path; incubators;
-accelerators; jobs; news, recaps, blogs, and directories; and unrelated topics.
-Also hard reject autism, genetics/genomics, pathology, homeopathy/homoeopathy,
-and radiology opportunities regardless of location.
-Accept only specific, currently joinable apply/join opportunities.
-
-Return exactly one valid JSON object of this shape:
-{"accepted":[{"id":0,"score":8}]}
-Omit every rejected candidate. Do not include markdown or commentary.
-Score 7–10 for fellowships/labs/programs. Madison/Wisconsin events may score
-4–8 based on relevance; omit networking elsewhere; plain conference elsewhere≤5."""
-
-    key = _next_key()
-    try:
-        response = _chat_request(
-            key,
-            model,
-            batch_system_prompt,
-            batch_prompt,
-            max_tokens=6000,
-        )
-        _record_key_use(key)
-        if response.status_code in (429, 402):
-            print(f"[EVAL] Batch request unavailable: HTTP {response.status_code}")
-            return [], to_eval + remaining
-        response.raise_for_status()
-        content = (
-            (response.json().get("choices") or [{}])[0]
-            .get("message", {})
-            .get("content")
-        )
-        Path("logs/last_batch_response.txt").write_text(str(content or ""))
-        parsed = parse_response(content)
-        if not isinstance(parsed, dict) or not isinstance(parsed.get("accepted"), list):
-            salvaged = salvage_accepted(content)
-            if salvaged:
-                print(f"[EVAL] Truncated JSON — salvaged {len(salvaged)} accepted objects")
-                parsed = {"accepted": salvaged}
-            else:
-                print("[EVAL] Batch response was not valid accepted-array JSON")
-                return [], to_eval + remaining
-    except Exception as e:
-        print(f"[EVAL] Batch request failed: {e}")
-        return [], to_eval + remaining
-
-    if not isinstance(parsed, dict) or not isinstance(parsed.get("accepted"), list):
-        print("[EVAL] Batch response was not valid accepted-array JSON")
-        return [], to_eval + remaining
-
-    accepted = []
-    for result in parsed["accepted"]:
-        if not isinstance(result, dict):
-            continue
+    batch_results: list[dict] = []
+    failed_ids: set[int] = set()
+    for i, chunk in enumerate(chunks, 1):
         try:
-            idx = int(result.get("id"))
+            print(f"[EVAL] Snippet chunk {i}/{len(chunks)} — {len(chunk)} rows")
+            result = _run_snippet_chunk(model, chunk)
+            if result is None:
+                failed_ids.update(c["id"] for c in chunk)
+                continue
+            batch_results.extend(result)
+        except Exception as e:
+            print(f"[EVAL] Snippet chunk {i} failed: {e}")
+            failed_ids.update(c["id"] for c in chunk)
+
+    failed_items = [to_eval[i] for i in sorted(failed_ids)] + remaining
+    snippet_accepts: list[dict] = []
+    scrape_queue: list[dict] = []
+
+    for result in batch_results:
+        try:
+            idx = int(result["id"])
             score = int(result.get("score", 0) or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, KeyError):
             continue
-        if idx not in eligible_ids or score < min_score:
+        if idx < 0 or idx >= len(to_eval):
             continue
         item = to_eval[idx]
-        body = item.get("scraped_body") or item.get("snippet") or ""
-        title = (
-            result.get("name")
-            or item.get("scraped_title")
-            or item.get("title")
-            or "Unnamed"
-        )
+        title = item.get("title", "")
+        body = item.get("snippet", "")
         track = (
-            "labs" if "labs" in item.get("tracks", [])
+            "labs" if "labs" in (item.get("tracks") or [])
             else item.get("track", "general")
         )
-        combined = (
-            f"{title} {body} {url_derived_text(item.get('url', ''))}"
-        ).lower()
-        opp_type = infer_type(combined, track)
-        if opp_type.lower() in ("accelerator", "incubator"):
+        if not apply_acceptance_gates(item, score, min_score, title, body, track):
             continue
-        is_wisconsin_event = (
-            ("madison" in combined or "wisconsin" in combined)
-            and _is_low_priority_type(opp_type)
-        )
-        # Madison/Wisconsin events are explicitly included; deprioritize elsewhere.
-        if _is_low_priority_type(opp_type):
-            if is_wisconsin_event:
-                pass
-            elif "network" in opp_type.lower() or "meetup" in opp_type.lower():
-                print(f"  → SKIP (networking): {str(title)[:50]}")
-                continue
-            elif score < 8:
-                print(f"  → SKIP (low-priority {opp_type}, score={score}): {str(title)[:50]}")
-                continue
-        if not is_wisconsin_event and not _is_high_priority_type(opp_type) and score < 7:
-            print(f"  → SKIP (not fellowship/lab/program): {str(title)[:50]}")
-            continue
-        item["name"] = str(title)[:200]
-        item["type"] = opp_type
-        item["deadline"] = infer_deadline(combined)
-        item["region"] = infer_region(combined)
-        item["eligibility"] = "Verify undergraduate and international eligibility"
-        item["description"] = body[:200]
-        item["ai_summary"] = (
-            f"Batch-evaluated fit for international clinical AI undergrad"
-        )
-        item["score"] = score
-        accepted.append(item)
-        print(f"  → ACCEPTED: {item['name'][:60]} | score={score} | {opp_type}")
+        built = build_notion_item(item, score, title, body, track)
+        built["snippet_score"] = score
+        if item.get("snippet_only"):
+            snippet_accepts.append(built)
+            print(f"  → SNIPPET-ONLY: {built['name'][:55]} | score={score}")
+        else:
+            scrape_queue.append(built)
+            print(f"  → SCRAPE-QUEUE: {built['name'][:55]} | score={score}")
 
-    print(f"[EVAL] {len(accepted)}/{len(to_eval)} accepted from 1 API request "
-          f"(score ≥ {min_score})")
-    if remaining:
-        print(f"[EVAL] {len(remaining)} items remaining unevaluated")
-    return accepted, remaining
+    print(
+        f"[EVAL] Snippet pass: {len(snippet_accepts)} fast-path, "
+        f"{len(scrape_queue)} need scrape, {len(failed_items)} failed/capped"
+    )
+    return snippet_accepts, scrape_queue, failed_items
+
+
+ENRICH_SYSTEM_PROMPT = """Confirm scraped opportunities for an international UW-Madison
+undergrad (clinical AI / digital health focus). Hard reject citizen-only, grad-only,
+incubators, jobs, off-topic.
+
+Return ONLY JSON: {"accepted":[{"id":0,"score":8}]}
+Include only still-valid opportunities. id must match input."""
+
+
+def enrich_batch(
+    items: list[dict],
+    min_score: int = 6,
+) -> tuple[list[dict], list[dict]]:
+    """Re-score scraped pages after full body fetch."""
+    if not items:
+        return [], []
+
+    _check_openrouter()
+    model = _model()
+    all_accepted: list[dict] = []
+    accepted_indices: set[int] = set()
+
+    for chunk_start in range(0, len(items), BATCH_CHUNK_SIZE):
+        chunk_items = items[chunk_start:chunk_start + BATCH_CHUNK_SIZE]
+        candidates = []
+        local_to_global: list[int] = []
+
+        for local_id, item in enumerate(chunk_items):
+            global_id = chunk_start + local_id
+            body = item.get("scraped_body") or item.get("snippet", "")
+            combined = f"{item.get('title','')} {body}".lower()
+            reject = next(
+                (s for s in POSTSCRAPE_REJECT_SIGNALS if s in combined), None
+            )
+            if reject:
+                print(f"  [POSTSCRAPE] skip: {reject}")
+                continue
+            local_to_global.append(global_id)
+            candidates.append({
+                "id": len(candidates),
+                "title": item.get("scraped_title") or item.get("title", ""),
+                "url": item.get("url", ""),
+                "content": body[:1500],
+            })
+
+        if not candidates:
+            continue
+
+        prompt = f"""Confirm these scraped pages. Return JSON accepted array id+score only.
+
+CANDIDATES:
+{json.dumps(candidates, ensure_ascii=False, separators=(',', ':'))}"""
+
+        try:
+            key = _next_key()
+            response = _chat_request(
+                key, model, ENRICH_SYSTEM_PROMPT, prompt, max_tokens=2000,
+            )
+            _record_key_use(key)
+            if response.status_code in (429, 402):
+                continue
+            response.raise_for_status()
+            content = (
+                (response.json().get("choices") or [{}])[0]
+                .get("message", {})
+                .get("content")
+            )
+            parsed = parse_response(content)
+            if not isinstance(parsed, dict):
+                salvaged = salvage_accepted(content)
+                parsed = {"accepted": salvaged} if salvaged else None
+            if not parsed:
+                continue
+            accepted_raw = parsed.get("accepted", [])
+        except Exception as e:
+            print(f"[EVAL] Enrich chunk failed: {e}")
+            continue
+
+        for result in accepted_raw:
+            try:
+                local_idx = int(result["id"])
+                score = int(result.get("score", 0) or 0)
+                if local_idx < 0 or local_idx >= len(local_to_global):
+                    continue
+                global_idx = local_to_global[local_idx]
+            except (TypeError, ValueError, KeyError):
+                continue
+            item = items[global_idx]
+            title = item.get("scraped_title") or item.get("title", "")
+            body = item.get("scraped_body") or item.get("snippet", "")
+            track = (
+                "labs" if "labs" in (item.get("tracks") or [])
+                else item.get("track", "general")
+            )
+            if not apply_acceptance_gates(item, score, min_score, title, body, track):
+                continue
+            built = build_notion_item(item, score, title, body, track)
+            built["full_score"] = score
+            all_accepted.append(built)
+            accepted_indices.add(global_idx)
+            print(f"  → ENRICHED: {built['name'][:55]} | score={score}")
+
+    failed = [items[i] for i in range(len(items)) if i not in accepted_indices]
+    return all_accepted, failed
+
+
+def batch_evaluate(
+    items: list[dict],
+    min_score: int = 6,
+    delay: float = DEFAULT_EVAL_DELAY,
+    max_eval: int = 0,
+) -> tuple[list[dict], list[dict]]:
+    """Legacy wrapper: snippet eval + scrape queue metadata."""
+    snippet_accepts, scrape_queue, failed = snippet_batch_eval(
+        items, min_score=min_score, max_eval=max_eval,
+    )
+    for item in scrape_queue:
+        item["_needs_scrape"] = True
+    accepted = snippet_accepts + scrape_queue
+    return accepted, failed
+

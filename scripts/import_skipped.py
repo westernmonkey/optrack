@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Import skipped_eval_urls.json → URL enrich → prefilter → heuristic parse → Notion.
-No LLM. Run: python scripts/import_skipped.py [--dry-run] [--limit N]
+DEPRECATED — use `python main.py --reval` instead.
+
+This script targeted skipped_eval_urls.json, which has been replaced by SQLite.
 """
 
 import argparse

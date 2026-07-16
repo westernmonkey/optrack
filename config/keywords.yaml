@@ -145,11 +145,18 @@ tracks:
       # Founder fellowships (not accelerators)
       - ["healthtech founder fellowship", "Global"]
       - ["digital health founder fellowship", "Global"]
-      - ["health innovation open call students", "Global"]
 
       # Challenges that double as student programs
       - ["clinical AI research challenge undergraduate", "United States"]
       - ["healthtech innovation challenge students", "United States"]
+
+    # Aggregator site searches (snippet-rich; snippet-only fast path)
+    site_queries:
+      - "site:opportunitiesforyouth.org health fellowship 2026"
+      - "site:opportunitiesforyouth.org clinical AI OR digital health 2026"
+      - "site:opportunitiesforyouth.org healthtech scholarship apply"
+      - "site:opportunitiesforyouth.org WHO OR NIH internship 2026"
+      - "site:opportunitiesforyouth.org health innovation grant apply"
 
   # ────────────────────────────────────────────────────────────────
   # LABS TRACK — clinical AI / digital health research labs and the
@@ -293,6 +300,7 @@ scoring:
 
 # Trusted domains — always pass prefilter
 trusted_domains:
+  - "opportunitiesforyouth.org"
   - "opportunitydesk.org"
   - "devpost.com"
   - "f6s.com"
