@@ -33,15 +33,23 @@ env/
 *.swo
 *~
 
-# Logs (optional — remove if you want to commit run history)
-# logs/
+# Transient / debug logs (keep only structured run_log.json)
+logs/*.log
+logs/last_batch_response.txt
+logs/last_snippet_response.txt
+logs/import_skipped.log
+logs/reval_*.log
+logs/run_*.log
 
-# Legacy queue files (replaced by data/optrack.db)
+# Legacy / ephemeral state — SQLite is source of truth
 data/pending_eval.json
 data/skipped_eval_urls.json
+data/seen_urls.json
+data/openrouter_usage.json
+data/.seen_urls_migrated
 data/manual_review_*.json
 data/recovered_pending_urls.json
+
 .pytest_cache/
 .coverage
 htmlcov/
-.env.example

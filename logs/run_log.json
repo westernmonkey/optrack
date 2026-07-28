@@ -208,5 +208,77 @@
     "remaining": 0,
     "accepted": 4,
     "written": 4
+  },
+  {
+    "date": "2026-07-19",
+    "mode": "daily",
+    "raw": 0,
+    "written": 0
+  },
+  {
+    "date": "2026-07-19",
+    "raw": 1124,
+    "new": 690,
+    "mode": "daily",
+    "prefiltered": 226,
+    "snippet_only": 3,
+    "scraped": 27,
+    "accepted": 14,
+    "written": 14,
+    "failed_eval": 106
+  },
+  {
+    "date": "2026-07-23",
+    "raw": 1109,
+    "new": 837,
+    "mode": "daily",
+    "prefiltered": 214,
+    "snippet_only": 0,
+    "scraped": 1,
+    "accepted": 1,
+    "written": 1,
+    "failed_eval": 160
+  },
+  {
+    "date": "2026-07-23",
+    "raw": 1075,
+    "new": 790,
+    "mode": "daily",
+    "prefiltered": 195,
+    "snippet_only": 0,
+    "scraped": 0,
+    "accepted": 0,
+    "written": 0,
+    "failed_eval": 80
+  },
+  {
+    "date": "2026-07-23",
+    "mode": "reval",
+    "prefiltered": 80,
+    "snippet_only": 0,
+    "scraped": 0,
+    "accepted": 0,
+    "written": 0,
+    "failed_eval": 0
+  },
+  {
+    "date": "2026-07-23",
+    "mode": "reval",
+    "prefiltered": 193,
+    "snippet_only": 0,
+    "scraped": 13,
+    "accepted": 0,
+    "written": 0,
+    "failed_eval": 0
+  },
+  {
+    "date": "2026-07-23",
+    "mode": "reval",
+    "prefiltered": 12,
+    "snippet_only": 0,
+    "scraped": 6,
+    "accepted": 2,
+    "written": 2,
+    "failed_eval": 0
   }
 ]

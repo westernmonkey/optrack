@@ -2,7 +2,8 @@ name: OpTrack — Opportunity Hunter
 
 on:
   schedule:
-    - cron: '0 4 * * 1'   # Weekly deep scan Monday 4am UTC (runs BEFORE daily)
+    - cron: '0 5 * * *'      # Daily light scan 05:00 UTC
+    - cron: '0 4 * * 1'      # Weekly deep scan Monday 04:00 UTC
   workflow_dispatch:
     inputs:
       mode:
@@ -10,16 +11,35 @@ on:
         required: false
         default: 'auto'
         type: choice
-        options: [auto, daily, weekly]
+        options: [auto, daily, weekly, reval]
       dry_run:
         description: 'Dry run (no Notion write)'
         required: false
         default: false
         type: boolean
 
+concurrency:
+  group: optrack-db
+  cancel-in-progress: false
+
 jobs:
-  hunt:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest -q
+
+  hunt:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
 
@@ -48,13 +68,26 @@ jobs:
         run: |
           MODE="${{ github.event.inputs.mode || 'auto' }}"
           DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+          # Monday scheduled run at 04:00 → weekly; other schedule → daily
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            CRON="${{ github.event.schedule }}"
+            if [ "$CRON" = "0 4 * * 1" ]; then
+              MODE="weekly"
+            else
+              MODE="daily"
+            fi
+          fi
           FLAGS=""
           if [ "$MODE" = "daily" ]; then FLAGS="--daily"; fi
           if [ "$MODE" = "weekly" ]; then FLAGS="--weekly"; fi
+          if [ "$MODE" = "reval" ]; then FLAGS="--reval --reval-limit 40"; fi
           if [ "$DRY_RUN" = "true" ]; then FLAGS="$FLAGS --dry-run"; fi
           echo "flags=$FLAGS" >> $GITHUB_OUTPUT
+          echo "mode=$MODE" >> $GITHUB_OUTPUT
 
       - name: Run OpTrack
+        id: run
+        continue-on-error: true
         env:
           SERPER_API_KEY:      ${{ secrets.SERPER_API_KEY }}
           NOTION_TOKEN:        ${{ secrets.NOTION_TOKEN }}
@@ -63,13 +96,29 @@ jobs:
           OPENROUTER_MODEL:    ${{ secrets.OPENROUTER_MODEL }}
         run: python main.py ${{ steps.flags.outputs.flags }}
 
+      - name: Bounded retry pass
+        if: steps.flags.outputs.mode != 'reval'
+        continue-on-error: true
+        env:
+          SERPER_API_KEY:      ${{ secrets.SERPER_API_KEY }}
+          NOTION_TOKEN:        ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_ID:        ${{ secrets.NOTION_DB_ID }}
+          OPENROUTER_API_KEYS: ${{ secrets.OPENROUTER_API_KEYS }}
+          OPENROUTER_MODEL:    ${{ secrets.OPENROUTER_MODEL }}
+        run: python main.py --reval --reval-limit 25
+
       - name: Commit updated state
+        if: always()
         run: |
           git config user.name "optrack-bot"
           git config user.email "optrack-bot@noreply.github.com"
-          git add data/optrack.db logs/run_log.json
+          git add data/optrack.db logs/run_log.json || true
           git diff --staged --quiet || (
             git commit -m "run: $(date -u +%Y-%m-%d) — opportunity scan"
-            git pull origin main --rebase
-            git push
+            git pull origin main --rebase || true
+            git push || true
           )
+
+      - name: Fail if hunt failed
+        if: steps.run.outcome == 'failure'
+        run: exit 1

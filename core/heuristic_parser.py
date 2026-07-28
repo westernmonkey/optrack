@@ -17,7 +17,8 @@ REGION_KEYWORDS = {
 
 TYPE_RULES = [
     (["fellowship", "fellow program"], "Fellowship"),
-    (["grant", "scholarship"], "Grant"),
+    (["scholarship"], "Scholarship"),
+    (["grant"], "Grant"),
     (["hackathon"], "Hackathon"),
     (["demo day", "demo-day", "demoday"], "Demo Day"),
     (["networking", "meetup", "mixer", "happy hour"], "Networking"),
@@ -190,14 +191,11 @@ def infer_type(text: str, track: str) -> str:
 
 
 def infer_deadline(text: str) -> str | None:
+    """Extract explicit deadlines only — never invent estimated years."""
     for pattern in DEADLINE_PATTERNS:
         m = re.search(pattern, text, re.I)
         if m:
             return m.group(1).strip()[:200]
-    # Guess year from URL/text when no explicit deadline
-    year_m = re.search(r"\b(202[5-9])\b", text)
-    if year_m:
-        return f"{year_m.group(1)} (estimated)"
     return None
 
 

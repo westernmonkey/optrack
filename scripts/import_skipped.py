@@ -68,7 +68,8 @@ def main():
 
     written = 0
     if parsed and not args.dry_run:
-        written = batch_write(parsed)
+        results = batch_write(parsed)
+        written = sum(1 for r in results if r.get("ok"))
     elif args.dry_run:
         print("[DRY RUN] Would write:")
         for p in parsed[:25]:

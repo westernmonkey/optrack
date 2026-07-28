@@ -25,6 +25,7 @@ tracks:
   # GENERAL TRACK — fellowships, scholarships, student programs
   # ────────────────────────────────────────────────────────────────
   general:
+    daily_limit: 40
     opportunity_types:
       # Fellowships & scholarships (primary)
       - "clinical AI fellowship undergraduate"
@@ -94,44 +95,6 @@ tracks:
       - ["clinical informatics undergraduate research", "Milwaukee"]
       - ["digital health research program", "Minneapolis"]
 
-      # Madison / Wisconsin — include all healthtech networking and events
-      - ["healthtech networking event", "Madison"]
-      - ["digital health meetup", "Madison"]
-      - ["health innovation networking", "Madison"]
-      - ["clinical AI networking", "Madison"]
-      - ["medtech networking event", "Madison"]
-      - ["health tech community event", "Madison"]
-      - ["healthtech conference", "Madison"]
-      - ["digital health conference", "Madison"]
-      - ["clinical AI conference", "Madison"]
-      - ["health innovation conference", "Madison"]
-      - ["medtech conference", "Madison"]
-      - ["health data conference", "Madison"]
-      - ["healthtech summit", "Madison"]
-      - ["digital health summit", "Madison"]
-      - ["clinical AI summit", "Madison"]
-      - ["health innovation summit", "Madison"]
-      - ["hospital innovation summit", "Madison"]
-      - ["health innovation forum", "Madison"]
-      - ["healthtech networking event", "Wisconsin"]
-      - ["digital health meetup", "Wisconsin"]
-      - ["health innovation networking", "Wisconsin"]
-      - ["clinical AI networking", "Wisconsin"]
-      - ["medtech networking event", "Wisconsin"]
-      - ["health tech community event", "Wisconsin"]
-      - ["healthtech conference", "Wisconsin"]
-      - ["digital health conference", "Wisconsin"]
-      - ["clinical AI conference", "Wisconsin"]
-      - ["health innovation conference", "Wisconsin"]
-      - ["medtech conference", "Wisconsin"]
-      - ["health data conference", "Wisconsin"]
-      - ["healthtech summit", "Wisconsin"]
-      - ["digital health summit", "Wisconsin"]
-      - ["clinical AI summit", "Wisconsin"]
-      - ["health innovation summit", "Wisconsin"]
-      - ["hospital innovation summit", "Wisconsin"]
-      - ["health innovation forum", "Wisconsin"]
-
       # Dubai / UAE — fellowships & programs
       - ["digital health fellowship", "Dubai"]
       - ["healthtech fellowship", "UAE"]
@@ -150,7 +113,7 @@ tracks:
       - ["clinical AI research challenge undergraduate", "United States"]
       - ["healthtech innovation challenge students", "United States"]
 
-    # Aggregator site searches (snippet-rich; snippet-only fast path)
+    # Aggregator discovery (OFY requires full-page confirmation — not trusted accept)
     site_queries:
       - "site:opportunitiesforyouth.org health fellowship 2026"
       - "site:opportunitiesforyouth.org clinical AI OR digital health 2026"
@@ -159,10 +122,31 @@ tracks:
       - "site:opportunitiesforyouth.org health innovation grant apply"
 
   # ────────────────────────────────────────────────────────────────
+  # WI EVENTS — Madison/Wisconsin healthtech networking & conferences
+  # Bounded separate track (not mixed into fellowship daily budget)
+  # ────────────────────────────────────────────────────────────────
+  wi_events:
+    daily_limit: 12
+    priority_combos:
+      - ["healthtech networking event", "Madison"]
+      - ["digital health meetup", "Madison"]
+      - ["clinical AI networking", "Madison"]
+      - ["healthtech conference", "Madison"]
+      - ["digital health conference", "Madison"]
+      - ["health innovation summit", "Madison"]
+      - ["medtech conference", "Madison"]
+      - ["healthtech networking event", "Wisconsin"]
+      - ["digital health meetup", "Wisconsin"]
+      - ["health innovation conference", "Wisconsin"]
+      - ["clinical AI summit", "Wisconsin"]
+      - ["hospital innovation forum", "Wisconsin"]
+
+  # ────────────────────────────────────────────────────────────────
   # LABS TRACK — clinical AI / digital health research labs and the
   # student / research / fellowship opportunities they run.
   # ────────────────────────────────────────────────────────────────
   labs:
+    daily_limit: 30
     opportunity_types:
       - "undergraduate research"
       - "research assistant"

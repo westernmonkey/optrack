@@ -1,77 +1,94 @@
 # OpTrack v2 — Opportunity Hunter
 
-Automatically searches the web for fellowships, scholarships, research programs, and healthtech events relevant to clinical AI and digital health. Evaluates with OpenRouter and saves opportunities to Notion.
+Automatically searches for clinical AI / digital health opportunities for an
+**international UW-Madison undergrad**, evaluates with OpenRouter, and writes
+score ≥ **6** acceptances to Notion.
 
-## How it works (snippet-first)
+## Pipeline
 
-1. **Query builder** — builds search queries from `config/keywords.yaml` (general + labs tracks, OFY `site:` queries)
-2. **Serper.dev** — Google Search API; returns title + URL + snippet per hit (1 credit per query)
-3. **SQLite store** — `data/optrack.db` tracks every URL and status (replaces `seen_urls.json` queues)
-4. **Prefilter** — drops obvious junk from snippets (no API cost)
-5. **Snippet eval** — one compact TSV batch to OpenRouter; score ≥ 6 to proceed
-6. **Fast path** — Madison/WI events and `opportunitiesforyouth.org` posts can write to Notion **without scrape**
-7. **Scrape + enrich** — only for non-fast-path survivors that scored ≥ 6
-8. **Notion writer** — saves accepted opportunities
+```
+Serper → SQLite upsert → deterministic prefilter → structured snippet eval
+  → scrape survivors → structured full-page confirm → idempotent Notion write
+```
 
-**Runs via GitHub Actions** (daily auto / weekly Monday / manual dispatch).
+Retry states (`eval_retry`, `scrape_retry`, `notion_retry`) are separate from
+terminal rejects. Malformed/empty LLM responses never become rejects.
 
----
+### Hard rejects (deterministic)
+Africa-only, mental health/psychiatry, autism/genetics/proteomics/pathology/
+homeopathy/radiology, US-citizen-only, graduate/MD/PhD/postdoc-only,
+incubators/accelerators, listicles, job boards.
+
+### Madison/WI exception
+Healthtech networking / conferences / summits in Madison or Wisconsin may
+accept at score ≥ 6 and can use the snippet-only fast path.
+
+OFY (`opportunitiesforyouth.org`) is a **discovery source only** — full-page
+confirmation is always required.
 
 ## Setup
 
 ```bash
-git clone https://github.com/yourname/optrack.git
+git clone https://github.com/westernmonkey/optrack.git
 cd optrack
 pip install -r requirements.txt
-cp .env.example .env   # local only; file is gitignored
+cp .env.example .env
 ```
 
 | Key | Where |
 |-----|--------|
-| `SERPER_API_KEY` | [serper.dev](https://serper.dev) |
+| `SERPER_API_KEY` | [serper.dev](https://serper.dev) — 1 credit per query |
 | `OPENROUTER_API_KEYS` | [openrouter.ai](https://openrouter.ai) (comma-separated) |
-| `NOTION_TOKEN` | Notion integration |
-| `NOTION_DB_ID` | Database ID from URL |
+| `NOTION_TOKEN` / `NOTION_DB_ID` | Notion integration + database |
 
-### Local commands
+## Commands
 
 ```bash
-python main.py --daily --dry-run    # search + eval, no Notion
-python main.py --daily              # full daily scan
-python main.py --weekly             # deep scan
-python main.py --reval              # retry queued URLs in SQLite
-python main.py --min-score 6        # default minimum score
+python main.py --daily --dry-run     # search + eval, no Notion / no written marks
+python main.py --daily               # bounded high-value scan
+python main.py --weekly              # deep scan
+python main.py --reval               # stage-aware retry of queued failures
+python main.py --reval --reval-stage notion --reval-limit 20
+python main.py --min-score 6         # default acceptance floor
+pytest -q                            # mocked regression tests
 ```
 
----
+## State machine (`data/optrack.db`)
 
-## Customising hunts
+| Status | Meaning |
+|--------|---------|
+| `discovered` | New URL |
+| `rejected_prefilter` | Deterministic junk |
+| `eval_retry` | LLM/API parse failure — retry snippet eval |
+| `rejected_snippet` | Valid LLM reject |
+| `scrape_queued` / `scrape_retry` | Needs / failed scrape+enrich |
+| `rejected_full` | Valid full-page reject |
+| `notion_retry` | Notion write failed |
+| `written` | Notion page created or already existed |
 
-Edit `config/keywords.yaml`:
+`--dry-run` never marks rows `written`.
 
-- `priority_combos` — daily high-value query pairs
-- `site_queries` — aggregator searches (e.g. opportunitiesforyouth.org)
-- `trusted_domains` — always pass prefilter
-- Madison/Wisconsin networking and conference combos
+## CI
 
----
+GitHub Actions runs **daily** + **weekly** (Monday), with `concurrency` so two
+jobs never edit `data/optrack.db` at once. Tests gate the hunt job.
 
-## File structure
+## Layout
 
 ```
 optrack/
 ├── main.py
-├── config/keywords.yaml
+├── config/keywords.yaml      # general / labs / wi_events tracks
 ├── core/
-│   ├── store.py           # SQLite URL state
-│   ├── snippet_paths.py   # Madison/WI + OFY fast path
-│   ├── evaluator.py       # Snippet + enrich batch eval
+│   ├── filter_policy.py      # single source of truth for hard rules
+│   ├── store.py              # SQLite state machine
+│   ├── evaluator.py          # structured all-ID JSON eval
+│   ├── notion_writer.py      # idempotent per-item writes
 │   ├── prefilter.py
-│   ├── query_builder.py
-│   └── notion_writer.py
+│   ├── snippet_paths.py
+│   └── query_builder.py
 ├── scrapers/
-│   ├── search_engine.py
-│   └── page_scraper.py
-├── data/optrack.db        # committed by CI bot
-└── logs/run_log.json
+├── tests/
+├── data/optrack.db
+└── logs/run_log.json         # concise structured summaries only
 ```
