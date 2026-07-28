@@ -280,5 +280,37 @@
     "accepted": 2,
     "written": 2,
     "failed_eval": 0
+  },
+  {
+    "date": "2026-07-28",
+    "raw": 498,
+    "new": 369,
+    "search": {
+      "queries": 82,
+      "ok_queries": 82,
+      "failed_queries": 0,
+      "unique_urls": 498,
+      "all_failed": false,
+      "fatal": false
+    },
+    "status_counts": {
+      "discovered": 175,
+      "eval_retry": 94,
+      "rejected_full": 5,
+      "rejected_prefilter": 810,
+      "rejected_snippet": 59,
+      "scrape_queued": 1,
+      "written": 2689
+    },
+    "mode": "daily",
+    "prefiltered": 154,
+    "snippet_only": 0,
+    "scraped": 6,
+    "accepted": 1,
+    "written": 1,
+    "notion_retry": 0,
+    "dry_run_count": 0,
+    "failed_eval": 94,
+    "openrouter_budget": 141
   }
 ]
