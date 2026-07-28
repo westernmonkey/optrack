@@ -33,8 +33,8 @@ FREE_RPM = 20
 FREE_RPD = 50
 MIN_KEY_INTERVAL = 60.0 / FREE_RPM
 DEFAULT_EVAL_DELAY = 3.1
-SNIPPET_CHUNK_SIZE = 20
-BATCH_CHUNK_SIZE = 12
+SNIPPET_CHUNK_SIZE = 10
+BATCH_CHUNK_SIZE = 8
 
 DEFAULT_MODEL = "openrouter/free"
 FREE_FALLBACK_MODELS = [
@@ -198,6 +198,7 @@ def _chat_request(
     *,
     model: str | None = None,
     key: str | None = None,
+    json_object: bool = True,
 ) -> tuple[str, str, str]:
     """
     Returns (content, model_used, key_used).
@@ -230,6 +231,8 @@ def _chat_request(
                 "temperature": 0.1,
                 "max_tokens": 4000,
             }
+            if json_object:
+                payload["response_format"] = {"type": "json_object"}
             try:
                 r = requests.post(
                     OPENROUTER_URL, headers=headers, json=payload, timeout=90
@@ -250,6 +253,26 @@ def _chat_request(
                     or ""
                 )
                 return content, model_name, key_used
+
+            # Some free models reject response_format — retry without it once
+            if (
+                json_object
+                and r.status_code in (400, 422)
+                and "response_format" in (r.text or "").lower()
+            ):
+                print(f"[OPENROUTER] {model_name} rejects json_object — retry plain")
+                try:
+                    content, used, key_used = _chat_request(
+                        system_prompt,
+                        user_prompt,
+                        model=model_name,
+                        key=key_used,
+                        json_object=False,
+                    )
+                    return content, used, key_used
+                except Exception as e:
+                    last_err = e
+                    break
 
             if r.status_code in (401, 403):
                 _mark_exhausted(key_used)
@@ -491,32 +514,50 @@ def _run_structured_chunk(
     """
     Returns (parsed_rows_or_None, error_code, model_used).
     None means retryable failure.
+    On parse failure, rotate through fallback models before giving up.
     """
     if remaining_daily_budget() <= 0:
         return None, "quota_exhausted", ""
 
     user_prompt = (
-        "Evaluate these opportunities. Return JSON with a results array "
-        "containing one object per id.\n\n"
+        "Evaluate these opportunities. Return ONLY a JSON object with key "
+        "\"results\" — an array with one object per id "
+        "(id, decision, score, reason, eligibility_confidence). "
+        "No markdown, no prose.\n\n"
         + _items_to_compact(chunk, full=full)
     )
-    try:
-        content, model_used, _ = _chat_request(EVAL_SYSTEM_PROMPT, user_prompt)
-    except QuotaExhausted as e:
-        return None, f"quota:{e}", ""
-    except Exception as e:
-        return None, f"request:{e}", ""
-
     label = "full" if full else "snippet"
-    log_raw_response(label, content)
-
     expected = list(range(len(chunk)))
-    try:
-        rows = parse_eval_response(content, expected)
-        return rows, "", model_used
-    except EvalParseError as e:
-        print(f"[EVAL] Parse failure ({label}): {e}")
-        return None, f"parse:{e}", model_used
+    last_err = "parse"
+    last_model = ""
+
+    for model_name in _models()[:4]:
+        if remaining_daily_budget() <= 0:
+            return None, "quota_exhausted", last_model
+        try:
+            content, model_used, _ = _chat_request(
+                EVAL_SYSTEM_PROMPT, user_prompt, model=model_name
+            )
+        except QuotaExhausted as e:
+            return None, f"quota:{e}", last_model
+        except Exception as e:
+            print(f"[EVAL] Request failure ({label}/{model_name}): {e}")
+            last_err = f"request:{e}"
+            continue
+
+        last_model = model_used
+        log_raw_response(f"{label}/{model_used}", content)
+        try:
+            rows = parse_eval_response(content, expected)
+            return rows, "", model_used
+        except EvalParseError as e:
+            print(f"[EVAL] Parse failure ({label}/{model_used}): {e} — trying next model")
+            last_err = f"parse:{e}"
+            time.sleep(1.5)
+            continue
+
+    print(f"[EVAL] All models failed parse ({label}): {last_err}")
+    return None, last_err, last_model
 
 
 # ---------------------------------------------------------------------------

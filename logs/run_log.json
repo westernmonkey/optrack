@@ -312,5 +312,53 @@
     "dry_run_count": 0,
     "failed_eval": 94,
     "openrouter_budget": 141
+  },
+  {
+    "date": "2026-07-28",
+    "mode": "reval",
+    "stage": "all",
+    "prefiltered": 40,
+    "snippet_only": 0,
+    "scraped": 4,
+    "accepted": 0,
+    "written": 0,
+    "notion_retry": 0,
+    "failed_eval": 0
+  },
+  {
+    "date": "2026-07-28",
+    "mode": "reval",
+    "stage": "scrape",
+    "prefiltered": 5,
+    "snippet_only": 0,
+    "accepted": 1,
+    "written": 1,
+    "notion_retry": 0,
+    "failed_eval": 0,
+    "scraped": 5
+  },
+  {
+    "date": "2026-07-28",
+    "mode": "reval",
+    "stage": "all",
+    "prefiltered": 40,
+    "snippet_only": 0,
+    "scraped": 0,
+    "accepted": 0,
+    "written": 0,
+    "notion_retry": 0,
+    "failed_eval": 40
+  },
+  {
+    "date": "2026-07-28",
+    "mode": "reval",
+    "stage": "all",
+    "prefiltered": 40,
+    "snippet_only": 3,
+    "scraped": 6,
+    "accepted": 6,
+    "written": 6,
+    "notion_retry": 0,
+    "failed_eval": 0
   }
 ]

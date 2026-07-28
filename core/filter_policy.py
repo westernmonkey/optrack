@@ -74,17 +74,27 @@ INCUBATOR_ACCEL_SIGNALS = [
     "healthtech accelerator", "digital health accelerator",
 ]
 
+# Strong topic kills — avoid bare words that appear in nav/footers ("nursing", "genetic").
 EXCLUDED_TOPIC_SIGNALS = [
     "autism", "autistic",
-    "genetic", "genetics", "genomic", "genomics",
-    "proteomic", "proteomics",
-    "pathology", "pathologist", "pathological",
+    "genetics fellowship", "genomic medicine", "genomics fellowship",
+    "proteomics", "proteomic",
+    "pathology fellowship", "pathologist",
     "homeopathy", "homeopathic", "homoeopathy", "homoeopathic",
-    "radiology", "radiologist", "radiological",
+    "radiology fellowship", "radiologist", "department of radiology",
     "mental health", "youth mental health", "behavioral health",
     "psychiatry", "psychiatric", "psychologist", "psychology fellowship",
     "wellbeing fellowship", "well-being fellowship", "mhinnovation",
-    "nursing", "notes on nursing",
+    "nursing fellowship", "nursing scholarship", "nursing students",
+    "school of nursing", "notes on nursing", "bsn ", "rn fellowship",
+]
+
+# Broader topic tokens — title/snippet only (pre-scrape); too noisy on full pages.
+EXCLUDED_TOPIC_TITLE_SIGNALS = [
+    "autism", "genetic", "genetics", "genomic", "genomics",
+    "proteomic", "proteomics", "pathology", "homeopathy", "radiology",
+    "mental health", "behavioral health", "psychiatry", "psychiatric",
+    "nursing",
 ]
 
 AFRICA_ONLY_SIGNALS = [
@@ -92,14 +102,15 @@ AFRICA_ONLY_SIGNALS = [
     "african health", "young african", "african professionals",
     "african youth", "for african", "africans only", "africa-only",
     "sub-saharan", "west africa", "east africa", "southern africa",
-    "unlocking africa", "youth-led health innovation",
+    "unlocking africa",
     "africa health collaborative", "ahif 2026", "ahif ",
     "african innovators", "african startups", "pan-african",
 ]
 
+# Job/listicle language — safe on title/snippet; noisy on full scraped HTML.
 LISTICLE_NEWS_SIGNALS = [
     "we're hiring", "we are hiring", "job opening", "open position",
-    "apply for this job", "job description", "full-time", "part-time",
+    "apply for this job", "job description",
     "salary range", "compensation:", "job requirements",
     "instagram post", "facebook post", "view on instagram",
     "watch video", "subscribe to", "follow us on",
@@ -108,6 +119,11 @@ LISTICLE_NEWS_SIGNALS = [
     "top 10", "top 20", "top 60", "top 90", "scholarships to apply for",
     "scholarships by major", "library highlights", "attracts thousands",
     "only 2% made it", "jobs in dubai", "intern jobs",
+]
+
+# Only match these on pre-scrape title/snippet — footers say "full-time" constantly.
+LISTICLE_TITLE_ONLY_SIGNALS = [
+    "full-time", "part-time",
 ]
 
 HEALTHTECH_SIGNALS = [
@@ -161,22 +177,25 @@ OFY_TITLE_SIGNALS = [
     "fully funded", "call for", "applications open", "deadline",
 ]
 
-HARD_REJECT_SIGNALS = (
+# Eligibility / geography — safe to match in page body (not footer noise).
+ELIGIBILITY_SIGNALS = (
     CITIZENSHIP_SIGNALS
     + GRADUATE_ONLY_SIGNALS
     + INCUBATOR_ACCEL_SIGNALS
-    + EXCLUDED_TOPIC_SIGNALS
     + AFRICA_ONLY_SIGNALS
+    + EXCLUDED_TOPIC_SIGNALS
+)
+
+HARD_REJECT_SIGNALS = (
+    ELIGIBILITY_SIGNALS
     + LISTICLE_NEWS_SIGNALS
+    + LISTICLE_TITLE_ONLY_SIGNALS
+    + EXCLUDED_TOPIC_TITLE_SIGNALS
 )
 
 # Labs track relaxes job-posting language but keeps eligibility/topic kills
 HARD_REJECT_SIGNALS_LABS = (
-    CITIZENSHIP_SIGNALS
-    + GRADUATE_ONLY_SIGNALS
-    + INCUBATOR_ACCEL_SIGNALS
-    + EXCLUDED_TOPIC_SIGNALS
-    + AFRICA_ONLY_SIGNALS
+    ELIGIBILITY_SIGNALS
     + [
         "instagram post", "facebook post", "view on instagram",
         "watch video", "subscribe to", "follow us on",
@@ -184,6 +203,13 @@ HARD_REJECT_SIGNALS_LABS = (
         "tenure-track faculty", "full professor", "assistant professor",
         "patient recruitment", "clinical trial enrollment", "enroll in our study",
     ]
+)
+
+# Post-scrape: listicle/job noise only on title + lead (not whole page).
+# Topic exclusions use strong phrases in ELIGIBILITY_SIGNALS — not bare "nursing".
+SCRAPE_LEAD_ONLY_SIGNALS = (
+    LISTICLE_NEWS_SIGNALS
+    + LISTICLE_TITLE_ONLY_SIGNALS
 )
 
 TYPE_RULES = [
@@ -301,16 +327,27 @@ def _load_yaml_junk_extras() -> list[str]:
 _YAML_JUNK_EXTRAS = _load_yaml_junk_extras()
 
 
+def _lead_text(item: dict, *, body_chars: int = 800) -> str:
+    """Title + snippet + lead body — avoids footer/nav false positives."""
+    title = (item.get("scraped_title") or item.get("title") or "").lower()
+    snippet = (item.get("snippet") or "").lower()
+    body = (item.get("scraped_body") or "")[:body_chars].lower()
+    url = item.get("url") or ""
+    return f"{title} {snippet} {body} {url_derived_text(url)}"
+
+
 def hard_reject(item: dict, *, scraped: bool = False) -> tuple[bool, str]:
     """
     Deterministic hard reject. Returns (True, reason_code) if rejected.
-    When scraped=True, still apply hard rejects but labs may keep /jobs/ paths.
+
+    Pre-scrape: title/snippet/URL only.
+    Post-scrape: eligibility on lead+body; noisy listicle/topic tokens only on
+    title + lead text so footers mentioning nursing/full-time do not kill fits.
     """
     url = item.get("url", "")
     domain = get_domain(url)
     path = urlparse(url).path.lower() if url else ""
     track = _item_track(item)
-    text = _probe_text(item, use_body=scraped)
 
     if domain in JUNK_DOMAINS or any(domain.endswith(f".{d}") for d in JUNK_DOMAINS):
         return True, f"junk_domain:{domain}"
@@ -328,14 +365,49 @@ def hard_reject(item: dict, *, scraped: bool = False) -> tuple[bool, str]:
         if frag in path:
             return True, f"junk_path:{frag}"
 
-    signals = HARD_REJECT_SIGNALS_LABS if track == "labs" else HARD_REJECT_SIGNALS
-    for signal in signals:
-        if signal in text:
+    if not scraped:
+        text = _probe_text(item, use_body=False)
+        signals = HARD_REJECT_SIGNALS_LABS if track == "labs" else HARD_REJECT_SIGNALS
+        for signal in signals:
+            if signal in text:
+                return True, f"hard_reject:{signal}"
+        if track != "labs":
+            for signal in _YAML_JUNK_EXTRAS:
+                if signal in text:
+                    return True, f"yaml_junk:{signal}"
+        return False, ""
+
+    # --- scraped ---
+    lead = _lead_text(item, body_chars=900)
+    body_probe = _probe_text(item, use_body=True)
+
+    for signal in ELIGIBILITY_SIGNALS:
+        # Prefer lead for topic phrases; citizenship/grad anywhere in body is ok
+        haystack = body_probe if signal in (
+            CITIZENSHIP_SIGNALS + GRADUATE_ONLY_SIGNALS + INCUBATOR_ACCEL_SIGNALS
+        ) else lead
+        # Africa + strong excluded topics: lead + first 2k of body
+        if signal in AFRICA_ONLY_SIGNALS or signal in EXCLUDED_TOPIC_SIGNALS:
+            haystack = _lead_text(item, body_chars=2000)
+        if signal in haystack:
+            return True, f"hard_reject:{signal}"
+
+    noisy = SCRAPE_LEAD_ONLY_SIGNALS
+    if track == "labs":
+        noisy = [
+            "instagram post", "facebook post", "view on instagram",
+            "watch video", "subscribe to", "follow us on",
+            "press release", "for immediate release",
+            "tenure-track faculty", "full professor", "assistant professor",
+            "patient recruitment", "clinical trial enrollment", "enroll in our study",
+        ]
+    for signal in noisy:
+        if signal in lead:
             return True, f"hard_reject:{signal}"
 
     if track != "labs":
         for signal in _YAML_JUNK_EXTRAS:
-            if signal in text:
+            if signal in lead:
                 return True, f"yaml_junk:{signal}"
 
     return False, ""
