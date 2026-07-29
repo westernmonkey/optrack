@@ -360,5 +360,15 @@
     "written": 6,
     "notion_retry": 0,
     "failed_eval": 0
+  },
+  {
+    "date": "2026-07-29",
+    "mode": "daily",
+    "raw": 0,
+    "written": 0,
+    "error": "All 82 Serper queries failed \u2014 refusing empty run",
+    "search": {
+      "fatal": true
+    }
   }
 ]
