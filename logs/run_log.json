@@ -450,5 +450,15 @@
     "search": {
       "fatal": true
     }
+  },
+  {
+    "date": "2026-08-06",
+    "mode": "daily",
+    "raw": 0,
+    "written": 0,
+    "error": "All 82 Serper queries failed \u2014 refusing empty run",
+    "search": {
+      "fatal": true
+    }
   }
 ]
